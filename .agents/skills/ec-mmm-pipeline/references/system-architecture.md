@@ -191,7 +191,7 @@ pip install nevergrad
 
 ## Robyn実行パフォーマンス
 
-### 参考値（D2C ECプロジェクト実測例）
+### 参考値（自社EC事例）
 ```
 データ: 154日 × 33列（8チャネル）
 設定: 2000 iterations × 5 trials = 10,000 モデル

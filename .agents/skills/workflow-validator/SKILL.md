@@ -297,9 +297,9 @@ export default router;
    - typecheckなしでのコミット試行を警告
    - 全体テスト実行を検出して単体テストを推奨
 
-## AGENTS.mdルールとの連携
+## CLAUDE.mdルールとの連携
 
-このスキルは `./AGENTS.md` に記載されているワークフローと注意事項を適用します：
+このスキルは `/Users/takashihamano/Desktop/claude code/CLAUDE.md` に記載されているワークフローと注意事項を適用します：
 
 ### ワークフロー
 - ✅ コード変更後は必ずtypecheckを実行
@@ -356,6 +356,6 @@ try {  // ✅
 
 ## 参考リソース
 
-- [AGENTS.md](./AGENTS.md) - プロジェクトワークフロー
+- [CLAUDE.md](/Users/takashihamano/Desktop/claude code/CLAUDE.md) - プロジェクトワークフロー
 - [Node.js Connection Pooling](https://node-postgres.com/features/pooling)
 - [Error Handling Best Practices](https://expressjs.com/en/guide/error-handling.html)

@@ -48,7 +48,7 @@ cat("認証成功!\n")
 # コンソールで: source("scripts/google_auth.R")
 
 # ターミナルで実行（ブラウザが開く）
-R -e "source('C:/Users/username/Documents/MMM/scripts/google_auth.R')"
+R -e "source('C:/Users/hamer/Documents/MMM/scripts/google_auth.R')"
 ```
 
 ### トークンキャッシュ

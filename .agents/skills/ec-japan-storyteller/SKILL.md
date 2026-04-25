@@ -191,9 +191,9 @@ description: |
 [市場] + [ブランド] + [商品名] + [差別化ポイント] + [日本価値]
 
 例:
-台湾: 【日本直送】匠刃物工房 極上包丁 職人手作り30年の技
-シンガポール: Takumi Kitchen Knife - Handcrafted in Japan, 30 Years of Mastery
-タイ: มีดครัว Takumi ผลิตโดยช่างฝีมือญี่ปุ่น 30 ปี
+台湾: 【日本直送】山田製作所 極上包丁 職人手作り30年の技
+シンガポール: Yamada Kitchen Knife - Handcrafted in Japan, 30 Years of Mastery
+タイ: มีดครัว Yamada ผลิตโดยช่างฝีมือญี่ปุ่น 30 ปี
 ```
 
 ### ブランドストーリーテンプレート

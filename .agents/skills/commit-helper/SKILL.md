@@ -48,9 +48,9 @@ git add <files>
 git commit -m "メッセージ"
 ```
 
-## AGENTS.mdルールとの連携
+## CLAUDE.mdルールとの連携
 
-このスキルは `./AGENTS.md` に記載されているルールに基づいています：
+このスキルは `/Users/takashihamano/Desktop/claude code/CLAUDE.md` に記載されているルールに基づいています：
 
 ### ワークフロー
 - ✅ コード変更後は必ずtypecheckを実行
@@ -112,7 +112,7 @@ import { module } from './module';
 
 ## 参考リソース
 
-- [AGENTS.md](./AGENTS.md) - プロジェクトルール
+- [CLAUDE.md](/Users/takashihamano/Desktop/claude code/CLAUDE.md) - プロジェクトルール
 - npm run typecheck - 型チェックコマンド
 - npm run build - ビルドコマンド
 - npm run test - テストコマンド
