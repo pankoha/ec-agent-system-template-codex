@@ -280,6 +280,9 @@ handoff/YYYY-MM-DD_HH-MM_handoff.md
 |---------|----------|------|
 | `ec-mmm-methodology` | ec-insight, ec-acquisition, ec-commander, ec-operations, cfo | MMM方法論・飽和曲線解釈・限界ROI・予算最適化の共通知識 |
 | `ec-emotional-marketing` | ec-creative, ec-acquisition, ec-drm, ec-engagement, ec-lpo, ec-sns-analytics, ec-commander, ec-insight, ec-crowdfunding, ec-amazon-strategy, global-marketing-trends | エモーショナルマーケティング方法論・感情設計・購買心理・行動経済学の共通知識 |
+| `lazyweb-design-research` | ec-lpo, ec-creative, ec-acquisition, ec-brand-strategy, developer | Lazyweb MCP / Chrome / Webを使った実UI・LP参考調査、デザイン方向性、実装前リサーチ |
+| `sns-research` | ec-sns-analytics, ec-creative, ec-acquisition, ec-insight, trend-intel | 無料枠優先のSNS・YouTube公開データ調査、競合SNS分析、投稿案・LP訴求抽出 |
+| `pox-analysis` | ec-brand-strategy, ec-lpo, ec-acquisition, ec-creative, ec-commander | Points of X（POD/POP/POF）による自社 vs 競合1社の差別化・ポジショニング分析 |
 
 ### Agent命名規則
 ```

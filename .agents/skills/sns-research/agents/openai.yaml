@@ -1,0 +1,4 @@
+interface:
+  display_name: "SNS Research"
+  short_description: "Research public social data with free-first sources."
+  default_prompt: "Use $sns-research to collect public social signals and turn them into concise competitor, trend, and content recommendations."

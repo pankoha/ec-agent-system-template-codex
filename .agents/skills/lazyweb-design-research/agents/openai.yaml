@@ -1,0 +1,4 @@
+interface:
+  display_name: "Lazyweb Design Research"
+  short_description: "Find UI references with Lazyweb."
+  default_prompt: "Use $lazyweb-design-research to gather UI or LP references and summarize evidence-backed layout, visual, and CTA recommendations."

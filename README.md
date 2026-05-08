@@ -224,6 +224,13 @@ cp codex-prompts/*.md ~/.codex/prompts/
 | `ec-amazon-strategy` | Amazon自社ブランド攻略 |
 | `ec-solo` | ひとりEC運営 |
 
+### 横断リサーチ・ポジショニング
+| スキル | 用途 |
+|---|---|
+| `lazyweb-design-research` | Lazyweb MCP / Chrome / Webを使ったLP・UI参考調査 |
+| `sns-research` | 無料枠優先のSNS・YouTube公開データ調査 |
+| `pox-analysis` | Points of X（POD/POP/POF）による1対1競合ポジショニング分析 |
+
 全コマンド一覧は `AGENTS.md` 内「コマンド一覧」セクション参照。
 
 ---

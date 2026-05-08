@@ -1,0 +1,4 @@
+interface:
+  display_name: "POX Analysis"
+  short_description: "Find POD, POP, and POF for positioning."
+  default_prompt: "Use $pox-analysis to compare my offer against one competitor and turn POD, POP, and POF into positioning, LP, and content recommendations."
