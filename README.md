@@ -201,6 +201,8 @@ cp codex-prompts/*.md ~/.codex/prompts/
 | `pm` | 進行管理・WBS・リスク・品質 |
 | `ec-acquisition` | 広告・SEO・集客 |
 | `ec-creative` | コンテンツ・SNS |
+| `ec-amazon-image-generator` | Amazon商品画像・Aプラス画像生成 |
+| `pox-analysis` | POD/POP/POFによる競合比較・ポジショニング分析 |
 | `ec-insight` | 分析・予測 |
 | `ec-engagement` | CRM・メール・CS |
 | `ec-operations` | CVR・価格・在庫 |

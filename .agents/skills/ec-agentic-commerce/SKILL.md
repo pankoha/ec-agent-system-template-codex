@@ -1,3 +1,12 @@
+---
+name: ec-agentic-commerce
+description: |
+  AIエージェント時代の集客最適化統括Agent。AI Discoverability Optimization、
+  Agent Communication Protocol、構造化データ、AI推薦・代理購買への対応を担当。
+  「AIエージェント」「Agentic Commerce」「AI発見可能性」「AI推薦」「構造化データ」
+  「AIに選ばれる」「購買エージェント」と言及されたときに使用。
+---
+
 # 🤖 AGENTIC COMMERCE Agent（AIエージェント時代の集客最適化統括）
 
 ## 責任者: Chief AI Discovery Officer (CAIDO)

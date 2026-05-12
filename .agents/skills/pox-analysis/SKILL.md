@@ -17,6 +17,28 @@ Use this skill to find a defensible market position by comparing the user's offe
 
 POX is not a broad "us vs 10 competitors" matrix. Run one POX analysis per competitor. When multiple competitors matter, create separate POX tables and then synthesize cautiously.
 
+## Competitive POX Translation Rules
+
+When using a competitor's POX analysis to design the user's offer, image structure, LP, or positioning, do not copy all competitor points directly. Translate them as follows:
+
+- Competitor POP: incorporate these into the user's offer or communication because they are category minimum requirements. Missing them can become a reason not to choose the user's offer.
+- Competitor POD: selectively adopt only the parts that match the user's brand, product reality, and winnable position. Discard or weaken competitor PODs when they require head-on competition in areas where the user is unlikely to win, such as brand fame, legacy authority, lowest price, or scale.
+- Competitor POF: identify the needs hidden inside what competitors intentionally discard, under-serve, or treat as weak. If customer demand exists there, convert that unmet need into the user's POD. Do not treat every competitor POF as something the user should also discard.
+
+Example:
+
+- If competitors avoid lowest-price competition, do not automatically make the user's offer cheap. Instead, check whether customers are really asking for lower price or for better everyday value, ingredient transparency, smaller commitment, or purchase confidence.
+- If competitors pursue a very sweet dessert-like flavor and reviews show "too sweet" dissatisfaction, the user's POD can be "gentle sweetness" or "clean aftertaste" rather than stronger sweetness.
+- If competitors rely on famous brand or heritage, the user's POD can be "chosen by ingredient fit and taste preference" rather than trying to imitate heritage.
+
+Practical rule:
+
+1. Bring competitor POP into the user's baseline.
+2. Partially discard competitor POD where it is not winnable or not aligned.
+3. Mine competitor POF for unmet customer needs.
+4. Turn only the needs with evidence into the user's POD.
+5. Keep unsupported, risky, or legally sensitive claims out of the final messaging.
+
 ## Workflow
 
 1. Define the comparison pair.
@@ -52,6 +74,7 @@ POX is not a broad "us vs 10 competitors" matrix. Run one POX analysis per compe
    - Product: must-have fixes, feature priorities, packaging, guarantee, onboarding.
    - Content/SNS: hooks, comparison posts, proof posts, founder story, objection-led posts.
    - Sales: talk track, qualification questions, proposal emphasis.
+   - Amazon/EC images: convert competitor POP into minimum-condition images, competitor POF with real demand into differentiation images, and competitor POD into selective reference points only when winnable.
 
 ## Output Format
 
@@ -95,6 +118,9 @@ POX is not a broad "us vs 10 competitors" matrix. Run one POX analysis per compe
 - If POP is missing, recommend fixing POP before amplifying POD.
 - If POF is severe, address it directly in product, offer, FAQ, guarantee, or proof.
 - For new products, treat POF as what not to build, not only what currently fails.
+- When analyzing competitors, do not classify competitor POF as "discard" by default for the user. First check whether there is an unmet customer need inside it.
+- When converting competitor POF into the user's POD, clearly separate the discarded attribute from the customer need being adopted.
+- Do not turn competitor POF into risky claims such as unsupported health benefits, unverified additive-free claims, unproven superiority, or direct comparative advertising without evidence.
 
 ## Common Mistakes
 

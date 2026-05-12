@@ -1,0 +1,8 @@
+interface:
+  display_name: "Amazon画像生成"
+  short_description: "売れるAmazon商品画像の構成・生成指示・品質確認"
+  brand_color: "#00A8E1"
+  default_prompt: "Use $ec-amazon-image-generator to create a high-converting Amazon image set and image-generation prompts for my product."
+
+policy:
+  allow_implicit_invocation: true

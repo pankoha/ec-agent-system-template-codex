@@ -19,6 +19,7 @@ credentials*
 *_token
 *.pfx
 *.p12
+local-llm-gateway/config/sensitive-patterns.local.json
 
 # ========================================
 # OS / 一時ファイル
