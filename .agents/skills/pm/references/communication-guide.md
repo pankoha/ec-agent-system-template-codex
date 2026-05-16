@@ -61,7 +61,7 @@ DMは情報の隠蔽。Truck Numberリスクの温床。
 Meeting Start → Read Report (20m) → Discuss (10m) → End
 └── 会議中に資料を読む時間が無駄
 
-【桁違い式（高効率）】
+【事前録画式（高効率）】
 Day Before: Send Video → Meeting Start → Discussion & Decision (30m) → End
 └── 事前に動画で報告、会議は「決める時間」に集中
 

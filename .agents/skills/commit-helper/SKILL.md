@@ -50,7 +50,7 @@ git commit -m "メッセージ"
 
 ## CLAUDE.mdルールとの連携
 
-このスキルは `/Users/takashihamano/Desktop/claude code/CLAUDE.md` に記載されているルールに基づいています：
+このスキルはプロジェクトルートの `AGENTS.md`（または `CLAUDE.md`）に記載されているルールに基づいています：
 
 ### ワークフロー
 - ✅ コード変更後は必ずtypecheckを実行
@@ -112,7 +112,7 @@ import { module } from './module';
 
 ## 参考リソース
 
-- [CLAUDE.md](/Users/takashihamano/Desktop/claude code/CLAUDE.md) - プロジェクトルール
+- プロジェクトルート `AGENTS.md` / `CLAUDE.md` - プロジェクトルール
 - npm run typecheck - 型チェックコマンド
 - npm run build - ビルドコマンド
 - npm run test - テストコマンド

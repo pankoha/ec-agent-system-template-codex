@@ -209,7 +209,7 @@ ES modulesを使用するには、`package.json` に以下を追加：
 
 ## CLAUDE.mdルールとの連携
 
-このスキルは `/Users/takashihamano/Desktop/claude code/CLAUDE.md` に記載されているコードスタイルルールを適用します：
+このスキルはプロジェクトルートの `AGENTS.md`（または `CLAUDE.md`）に記載されているコードスタイルルールを適用します：
 
 - ✅ ES modules（import/export）を使用、CommonJS（require）は不可
 - ✅ 可能な限りimportを分割構文で記述
@@ -226,6 +226,6 @@ ES modulesを使用するには、`package.json` に以下を追加：
 
 ## 参考リソース
 
-- [CLAUDE.md](/Users/takashihamano/Desktop/claude code/CLAUDE.md) - プロジェクトコーディング規約
+- プロジェクトルート `AGENTS.md` / `CLAUDE.md` - プロジェクトコーディング規約
 - [MDN: ES Modules](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Modules)
 - [Node.js ES Modules](https://nodejs.org/api/esm.html)

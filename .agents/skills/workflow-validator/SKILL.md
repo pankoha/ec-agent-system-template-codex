@@ -299,7 +299,7 @@ export default router;
 
 ## CLAUDE.mdルールとの連携
 
-このスキルは `/Users/takashihamano/Desktop/claude code/CLAUDE.md` に記載されているワークフローと注意事項を適用します：
+このスキルはプロジェクトルートの `AGENTS.md`（または `CLAUDE.md`）に記載されているワークフローと注意事項を適用します：
 
 ### ワークフロー
 - ✅ コード変更後は必ずtypecheckを実行
@@ -356,6 +356,6 @@ try {  // ✅
 
 ## 参考リソース
 
-- [CLAUDE.md](/Users/takashihamano/Desktop/claude code/CLAUDE.md) - プロジェクトワークフロー
+- プロジェクトルート `AGENTS.md` / `CLAUDE.md` - プロジェクトワークフロー
 - [Node.js Connection Pooling](https://node-postgres.com/features/pooling)
 - [Error Handling Best Practices](https://expressjs.com/en/guide/error-handling.html)

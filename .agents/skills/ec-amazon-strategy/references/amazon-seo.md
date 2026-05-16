@@ -1,4 +1,4 @@
-# Amazon SEO 詳細ガイド（Amazon物販3ステップメソッド）
+# Amazon SEO 詳細ガイド（Amazon自社ブランド戦略フレームワーク）
 
 ## Amazon SEOの2軸構造
 

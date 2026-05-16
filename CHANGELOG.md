@@ -37,7 +37,7 @@ All notable changes to this template will be documented in this file.
 
 ## 関連リポジトリ
 
-- **Claude Code版**: https://github.com/hamano-takashi/ec-agent-system-template
+- **Claude Code版**: `<YOUR_ORG_OR_USER>/ec-agent-system-template`
   - `CLAUDE.md` + `.claude/skills/` 構造
   - Claude Code / Anthropic Claude 使用前提
 
