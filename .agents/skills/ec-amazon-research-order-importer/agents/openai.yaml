@@ -1,0 +1,4 @@
+﻿interface:
+  display_name: "Amazon Research注文取り込み"
+  short_description: "GmailのAmazon注文確定メールをGoogle Sheetsのリサーチ表へ取り込み、既存行の売上金も補修するApps Script業務スキル"
+  default_prompt: "Amazon Research用に、GmailのAmazon注文確定メールをスプレッドシートへ自動取り込みする仕組みを設定・修正・検証してください。"
