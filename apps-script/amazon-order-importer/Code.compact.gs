@@ -142,7 +142,7 @@ function key_(it){const s=cleanSku_(it.sku),a=amtKey_(it.amount);return s&&s!=='
 function amtKey_(v){return String(v||'').replace(/[^\d]/g,'');}
 function dispName_(name){return String(name||'').replace(/^[\s*＊・\-]+/,'').trim();}
 function existing_(s){const data={orders:new Set()}, last=s.getLastRow(); if(last<2)return data; s.getRange(2,2,last-1,1).getValues().flat().forEach(v=>{const m=String(v||'').match(/[0-9]{3}-[0-9]{7}-[0-9]{7}/); if(m)data.orders.add(m[0]);}); return data;}
-function sortOrderSheet_(s){const last=s.getLastRow(); if(last>2)s.getRange(2,1,last-1,11).sort({column:1,ascending:true}); showFromMinDate_(s);}
+function sortOrderSheet_(s){const last=s.getLastRow(),cols=Math.max(11,s.getLastColumn()); if(last>2)s.getRange(2,1,last-1,cols).sort({column:1,ascending:true}); showFromMinDate_(s);}
 function showFromMinDate_(s){const last=s.getLastRow(); if(last<2)return; s.showRows(2,last-1); const min=new Date(C.minDate+' 00:00:00'), vals=s.getRange(2,1,last-1,1).getDisplayValues().flat(); let st=0,len=0; for(let i=0;i<vals.length;i++){const v=vals[i],d=new Date(String(v).replace(/\//g,'-')+' 00:00:00'), old=v&&d<min; if(old){if(!st)st=i+2;len++;}else if(st){s.hideRows(st,len);st=0;len=0;}} if(st)s.hideRows(st,len);}
 function sheet_(ss,n){return ss.getSheetByName(n)||ss.insertSheet(n);}
 function header_(s,h){const cur=s.getRange(1,1,1,h.length).getValues()[0]; if(h.some((x,i)=>cur[i]!==x))s.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground('#f3f4f6');}
