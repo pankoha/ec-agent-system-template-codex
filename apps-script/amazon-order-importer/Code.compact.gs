@@ -10,6 +10,7 @@ function onOpen(){
     .addItem('2026\u5e746\u6708\u4ee5\u964d\u3060\u3051\u8868\u793a','showShipDatesFromJune2026')
     .addItem('\u65e2\u5b58\u884c\u306e\u6ce8\u6587\u60c5\u5831\u3092Gmail\u304b\u3089\u518d\u4f5c\u6210','refreshExistingOrderDetailsFromGmail')
     .addItem('\u78ba\u8a8d\u7528\u304b\u3089Gmail\u518d\u51e6\u7406','reprocessReviewRowsFromGmail')
+    .addItem('\u51e6\u7406\u6e08\u307f\u30e1\u30fc\u30eb\u304b\u3089\u53d6\u308a\u3053\u307c\u3057\u56de\u5fa9','recoverProcessedAmazonOrderEmails')
     .addItem('\u65e2\u5b58\u884c\u306e\u58f2\u4e0a\u91d1\u3092Gmail\u304b\u3089\u66f4\u65b0','refreshExistingSalesAmountsFromGmail').addToUi();
 }
 
@@ -40,7 +41,7 @@ function dedupeB_(b){const mark='(?:\\u3010\\d+\\u3011|[\\(\\uff08]\\d+[\\)\\uff
 function dedupeC_(c){const mark='(?:\\u3010\\d+\\u3011|[\\(\\uff08]\\d+[\\)\\uff09])'; if(!(new RegExp(mark)).test(c))return c; const re=new RegExp('(?='+mark+')'), mr=new RegExp('^'+mark+'\\n?'), parts=c.split(re).filter(x=>(new RegExp(mark)).test(x)),seen=new Set(),out=[]; parts.forEach(x=>{const body=x.replace(mr,'').trim(),key=body.replace(/\s/g,''); if(!key||seen.has(key))return; seen.add(key); out.push(body);}); return out.length===1?out[0]:out.map((x,i)=>`\u3010${i+1}\u3011\n${x}`).join('\n');}
 function findOrderByOrder_(order){
   const ths=GmailApp.search(`"${order}" from:${C.sender}`,0,10);
-  for(const th of ths){for(const m of th.getMessages()){const r=parse_(mailText_(m)); if(r.ok&&r.f.orderNo===order)return r.f;}}
+  for(const th of ths){for(const m of th.getMessages()){const r=parse_(mailText_(m),m.getSubject()); if(r.ok&&r.f.orderNo===order)return r.f;}}
   return null;
 }
 function refreshExistingSalesAmountsFromGmail(){
@@ -75,8 +76,8 @@ function importAmazonOrderEmails(){
     let done=false;
     th.getMessages().forEach(m=>{
       if(m.getFrom().toLowerCase().indexOf(C.sender)<0||m.getSubject().indexOf(C.subject)<0)return;
-      const res=parse_(mailText_(m));
-      if(!res.ok){bad.push([new Date(),m.getDate(),m.getSubject(),JSON.stringify(res.f),res.missing.join(', '),res.error]);done=true;return;}
+      const res=parse_(mailText_(m),m.getSubject());
+      if(!res.ok){bad.push([new Date(),m.getDate(),m.getSubject(),JSON.stringify(res.f),res.missing.join(', '),res.error]);return;}
       if(exists.orders.has(res.f.orderNo)){done=true;return;}
       exists.orders.add(res.f.orderNo); out.push(row_(res.f)); done=true;
     });
@@ -86,6 +87,14 @@ function importAmazonOrderEmails(){
   sortOrderSheet_(os);
   if(bad.length){let row=rs.getLastRow()+1;rs.getRange(row,1,bad.length,6).setValues(bad).setWrap(true);}
   Logger.log(`\u8ffd\u52a0: ${out.length}\u4ef6 / \u78ba\u8a8d\u7528: ${bad.length}\u4ef6`);
+}
+function recoverProcessedAmazonOrderEmails(){
+  setupAmazonOrderImporter();
+  const ss=SpreadsheetApp.openById(C.id), os=ss.getSheetByName(C.order), rs=ss.getSheetByName(C.review), exists=existing_(os), out=[], bad=[];
+  GmailApp.search(`from:${C.sender} subject:"${C.subject}" label:"${C.label}"`,0,100).forEach(th=>th.getMessages().forEach(m=>{if(m.getFrom().toLowerCase().indexOf(C.sender)<0||m.getSubject().indexOf(C.subject)<0)return; const res=parse_(mailText_(m),m.getSubject()); if(!res.ok){bad.push([new Date(),m.getDate(),m.getSubject(),JSON.stringify(res.f),res.missing.join(', '),res.error]);return;} if(exists.orders.has(res.f.orderNo))return; exists.orders.add(res.f.orderNo); out.push(row_(res.f));}));
+  if(out.length){let row=os.getLastRow()+1;os.getRange(row,1,out.length,4).setValues(out).setWrap(true);dedupeBRows_(row,row+out.length-1);sortOrderSheet_(os);}
+  if(bad.length){let row=rs.getLastRow()+1;rs.getRange(row,1,bad.length,6).setValues(bad).setWrap(true);}
+  Logger.log(`\u53d6\u308a\u3053\u307c\u3057\u56de\u5fa9: ${out.length}\u4ef6 / \u78ba\u8a8d\u7528: ${bad.length}\u4ef6`);
 }
 
 function installTimeDrivenTriggerEvery15Minutes(){trigger_(15);}
@@ -97,10 +106,10 @@ function trigger_(min){
   else ScriptApp.newTrigger('importAmazonOrderEmails').timeBased().everyMinutes(min).create();
 }
 
-function parse_(text){
+function parse_(text,subject){
   const orderNo=pick_(text,[/\u6ce8\u6587\u756a\u53f7\s*[:\uff1a]?\s*([0-9]{3}-[0-9]{7}-[0-9]{7})/,/\b([0-9]{3}-[0-9]{7}-[0-9]{7})\b/]);
-  const parts=blocks_(text);
-  const items=(parts.length?parts:[text]).map(p=>{const it={shipDate:ship_(p)||ship_(text),name:name_(p),sku:sku_(p),amount:amount_(p)}; it.word=word_(it.name); if(!it.sku)it.sku='\u53d6\u5f97\u4e0d\u53ef'; if(!it.amount)it.amount='\u53d6\u5f97\u4e0d\u53ef'; return it;}).filter(it=>it.shipDate&&it.name&&it.word).filter((it,i,a)=>a.findIndex(x=>key_(x)===key_(it))===i);
+  const parts=blocks_(text), sub=subjectItem_(subject);
+  const items=(parts.length?parts:[text]).map(p=>{const it={shipDate:ship_(p)||ship_(text),name:name_(p)||sub.name,sku:sku_(p)||sub.sku,amount:amount_(p)}; it.word=word_(it.name); if(!it.sku)it.sku='\u53d6\u5f97\u4e0d\u53ef'; if(!it.amount)it.amount='\u53d6\u5f97\u4e0d\u53ef'; return it;}).filter(it=>it.shipDate&&it.name&&it.word).filter((it,i,a)=>a.findIndex(x=>key_(x)===key_(it))===i);
   const f={orderNo:orderNo,shipDate:items[0]?items[0].shipDate:'',items:items};
   const miss=[]; if(!f.orderNo)miss.push('orderNo'); if(!f.shipDate)miss.push('shipDate'); if(!items.length)miss.push('items');
   return miss.length?{ok:false,f:f,missing:miss,error:'\u5fc5\u9808\u9805\u76ee\u3092\u53d6\u5f97\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: '+miss.join(', ')}:{ok:true,f:f,missing:[],error:''};
@@ -114,6 +123,7 @@ function blocks_(text){const re=/(?:^|\n)(\u51fa\s*\u8377\s*\u4e88\s*\u5b9a\s*\u
 function name_(text){return pick_(text,[/\u5546\s*\u54c1\s*\u540d\s*[:\uff1a]\s*([\s\S]+?)(?=\n|\u30b3\u30f3\u30c7\u30a3\u30b7\u30e7\u30f3\s*[:\uff1a]|S\s*K\s*U\s*[:\uff1a]|\u6570\u91cf\s*[:\uff1a]|\u4fa1\u683c\s*[:\uff1a]|\u7a0e\u91d1\s*[:\uff1a]|Amazon\u624b\u6570\u6599\s*[:\uff1a]|\u58f2\s*\u4e0a\s*\u91d1\s*[:\uff1a]|$)/,/\u5546\s*\u54c1\s*[:\uff1a]\s*([\s\S]+?)(?=\n|\u30b3\u30f3\u30c7\u30a3\u30b7\u30e7\u30f3\s*[:\uff1a]|S\s*K\s*U\s*[:\uff1a]|\u6570\u91cf\s*[:\uff1a]|\u4fa1\u683c\s*[:\uff1a]|\u7a0e\u91d1\s*[:\uff1a]|Amazon\u624b\u6570\u6599\s*[:\uff1a]|\u58f2\s*\u4e0a\s*\u91d1\s*[:\uff1a]|$)/,/\u30bf\u30a4\u30c8\u30eb\s*[:\uff1a]\s*([^\n]+)/]).replace(/\s+/g,' ').trim();}
 function sku_(text){return cleanSku_(pick_(text,[/\u51fa\u54c1\u8005\s*S\s*K\s*U\s*[:\uff1a]?\s*([^\n]+)/i,/\u5546\u54c1\s*S\s*K\s*U\s*[:\uff1a]?\s*([^\n]+)/i,/\bS\s*K\s*U\s*[:\uff1a]?\s*([^\n]+)/i,/\u5546\u54c1\u7ba1\u7406\u756a\u53f7\s*[:\uff1a]?\s*([^\n]+)/,/\u7ba1\u7406\u756a\u53f7\s*[:\uff1a]?\s*([^\n]+)/]));}
 function amount_(text){const t=String(text||''), labeled=labeledAmount_(t); if(labeled)return labeled; const m=[...t.matchAll(/(?:[\uffe5\u00a5]\s*)?([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*\u5186|[\uffe5\u00a5]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)/g)]; if(!m.length)return ''; const x=m[m.length-1]; return (x[1]||x[2])+'\u5186';}
+function subjectItem_(subject){const s=String(subject||'').replace(/^\s*\u6ce8\u6587\u78ba\u5b9a\s*[:\uff1a]\s*/,'').trim(),m=s.match(/^([A-Za-z0-9][A-Za-z0-9_-]*)\s+([\s\S]+)/); return {sku:m?m[1]:'',name:m?m[2]:s};}
 function word_(name){if(!name)return ''; return cleanWord_(dvd_(name)?dvdWords_(name):(model_(name)||fallbackWord_(name)));}
 function cleanWord_(v){return String(v||'').split('\n').map(x=>x.replace(/^[\s*＊・\-]+/,'').trim()).join('\n').trim();}
 function dvd_(name){if(/\u30ec\u30b3\u30fc\u30c0\u30fc|\u30d7\u30ec\u30fc\u30e4\u30fc|\u30d7\u30ec\u30a4\u30e4\u30fc|\u30c7\u30a3\u30b9\u30af\u30ec\u30b3\u30fc\u30c0\u30fc/i.test(name))return false; return /\u30ec\u30f3\u30bf\u30eb\u843d\u3061|\u5168\s*[0-9\uff10-\uff19]+\s*\u5dfb|\u5168\u5dfb\u30bb\u30c3\u30c8|DVD|Blu-ray|\u30d6\u30eb\u30fc\u30ec\u30a4|\u30de\u30fc\u30b1\u30c3\u30c8\u30d7\u30ec\u30a4\u30b9DVD\u30bb\u30c3\u30c8\u5546\u54c1/i.test(name);}
@@ -122,7 +132,7 @@ function dvdWords_(name){
   return title?[`${title} \u5168`,vol?`${title} ${vol}`:`${title} \u5168\u5dfb`,`${title} \u30ec\u30f3\u30bf\u30eb`].join('\n'):'';
 }
 function cleanTitle_(name){
-  return name.replace(/[\u3010\u3011]/g,' ').replace(/\[[^\]]*(\u30ec\u30f3\u30bf\u30eb\u843d\u3061|\u30de\u30fc\u30b1\u30c3\u30c8\u30d7\u30ec\u30a4\u30b9DVD\u30bb\u30c3\u30c8\u5546\u54c1|DVD|Blu-ray|\u30d6\u30eb\u30fc\u30ec\u30a4|\u4e2d\u53e4|\u30bb\u30c3\u30c8\u5546\u54c1)[^\]]*\]/gi,' ')
+  return name.replace(/[\u3010\u3011\[\]]/g,' ').replace(/\s*(\u30ec\u30f3\u30bf\u30eb\u843d\u3061|\u30de\u30fc\u30b1\u30c3\u30c8\u30d7\u30ec\u30a4\u30b9DVD\u30bb\u30c3\u30c8\u5546\u54c1|DVD|Blu-ray|\u30d6\u30eb\u30fc\u30ec\u30a4|\u4e2d\u53e4|\u30bb\u30c3\u30c8\u5546\u54c1)\s*$/gi,' ').replace(/\[[^\]]*(\u30ec\u30f3\u30bf\u30eb\u843d\u3061|\u30de\u30fc\u30b1\u30c3\u30c8\u30d7\u30ec\u30a4\u30b9DVD\u30bb\u30c3\u30c8\u5546\u54c1|DVD|Blu-ray|\u30d6\u30eb\u30fc\u30ec\u30a4|\u4e2d\u53e4|\u30bb\u30c3\u30c8\u5546\u54c1)[^\]]*\]/gi,' ')
     .replace(/\u30ec\u30f3\u30bf\u30eb\u843d\u3061|\u30de\u30fc\u30b1\u30c3\u30c8\u30d7\u30ec\u30a4\u30b9DVD\u30bb\u30c3\u30c8\u5546\u54c1|Blu-ray|\u30d6\u30eb\u30fc\u30ec\u30a4|DVD|\u4e2d\u53e4|\u30bb\u30c3\u30c8\u5546\u54c1/gi,' ')
     .replace(/\u5168\s*[0-9\uff10-\uff19]+\s*\u5dfb\s*\u30bb\u30c3\u30c8?/g,' ').replace(/\u5168\u5dfb\u30bb\u30c3\u30c8/g,' ').replace(/[\uff08(][^)\uff09]*[)\uff09]/g,' ').split(/\s*\+\s*/)[0].replace(/^[\s*＊・\-]+/,' ').replace(/\s*[0-9\uff10-\uff19]+(?:[,\u3001]\s*[0-9\uff10-\uff19]+)+\s*$/,' ').replace(/\s+/g,' ').trim();
 }
