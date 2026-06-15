@@ -15,7 +15,7 @@ function onOpen(){
 
 function setupAmazonOrderImporter(){
   const ss=SpreadsheetApp.openById(C.id); ss.rename(C.title);
-  const s=sheet_(ss,C.order), old=s.getRange(1,1,1,11).getValues()[0]; migrateOldColumns_(s,old); header_(s,['\u51fa\u8377\u4e88\u5b9a\u65e5','\u6ce8\u6587\u60c5\u5831','\u58f2\u4e0a\u91d1','\u691c\u7d22\u30ef\u30fc\u30c9','\u4f4f\u6240','\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1','Amazon','\u30e4\u30d5\u30aa\u30af','\u30e1\u30eb\u30ab\u30ea','\u30b8\u30e2\u30c6\u30a3','\u305d\u306e\u4ed6\u30b5\u30a4\u30c8']);
+  const s=sheet_(ss,C.order), old=s.getRange(1,1,1,11).getValues()[0]; migrateOldColumns_(s,old); header_(s,['\u51fa\u8377\u4e88\u5b9a\u65e5','\u6ce8\u6587\u60c5\u5831','\u58f2\u4e0a\u91d1','\u691c\u7d22\u30ef\u30fc\u30c9','\u304a\u5c4a\u3051\u5148','\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1','Amazon','\u30e4\u30d5\u30aa\u30af','\u30e1\u30eb\u30ab\u30ea','\u30b8\u30e2\u30c6\u30a3','\u305d\u306e\u4ed6\u30b5\u30a4\u30c8']);
   s.setFrozenRows(1); s.getRange('A:K').setWrap(true); s.setColumnWidth(1,120); s.setColumnWidth(2,520); s.setColumnWidth(3,100); s.setColumnWidth(4,260); s.setColumnWidth(5,200); s.setColumnWidths(6,6,180);
   const r=sheet_(ss,C.review); header_(r,['\u51e6\u7406\u65e5\u6642','\u30e1\u30fc\u30eb\u53d7\u4fe1\u65e5\u6642','\u30e1\u30fc\u30eb\u4ef6\u540d','\u53d6\u5f97\u3067\u304d\u305f\u60c5\u5831','\u53d6\u5f97\u3067\u304d\u306a\u304b\u3063\u305f\u60c5\u5831','\u30a8\u30e9\u30fc\u5185\u5bb9']);
   r.setFrozenRows(1); r.getRange('A:F').setWrap(true); r.setColumnWidths(1,3,160); r.setColumnWidths(4,3,320);
