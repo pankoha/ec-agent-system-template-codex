@@ -15,8 +15,8 @@ function onOpen(){
 
 function setupAmazonOrderImporter(){
   const ss=SpreadsheetApp.openById(C.id); ss.rename(C.title);
-  const s=sheet_(ss,C.order), old=s.getRange(1,1,1,4).getValues()[0]; header_(s,['\u51fa\u8377\u4e88\u5b9a\u65e5','\u6ce8\u6587\u60c5\u5831','\u58f2\u4e0a\u91d1','\u691c\u7d22\u30ef\u30fc\u30c9','\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1','Amazon','\u30e4\u30d5\u30aa\u30af','\u30e1\u30eb\u30ab\u30ea','\u30b8\u30e2\u30c6\u30a3','\u305d\u306e\u4ed6\u30b5\u30a4\u30c8']); migrateOldColumns_(s,old);
-  s.setFrozenRows(1); s.getRange('A:J').setWrap(true); s.setColumnWidth(1,120); s.setColumnWidth(2,520); s.setColumnWidth(3,100); s.setColumnWidth(4,260); s.setColumnWidths(5,6,180);
+  const s=sheet_(ss,C.order), old=s.getRange(1,1,1,11).getValues()[0]; migrateOldColumns_(s,old); header_(s,['\u51fa\u8377\u4e88\u5b9a\u65e5','\u6ce8\u6587\u60c5\u5831','\u58f2\u4e0a\u91d1','\u691c\u7d22\u30ef\u30fc\u30c9','\u4f4f\u6240','\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1','Amazon','\u30e4\u30d5\u30aa\u30af','\u30e1\u30eb\u30ab\u30ea','\u30b8\u30e2\u30c6\u30a3','\u305d\u306e\u4ed6\u30b5\u30a4\u30c8']);
+  s.setFrozenRows(1); s.getRange('A:K').setWrap(true); s.setColumnWidth(1,120); s.setColumnWidth(2,520); s.setColumnWidth(3,100); s.setColumnWidth(4,260); s.setColumnWidth(5,200); s.setColumnWidths(6,6,180);
   const r=sheet_(ss,C.review); header_(r,['\u51e6\u7406\u65e5\u6642','\u30e1\u30fc\u30eb\u53d7\u4fe1\u65e5\u6642','\u30e1\u30fc\u30eb\u4ef6\u540d','\u53d6\u5f97\u3067\u304d\u305f\u60c5\u5831','\u53d6\u5f97\u3067\u304d\u306a\u304b\u3063\u305f\u60c5\u5831','\u30a8\u30e9\u30fc\u5185\u5bb9']);
   r.setFrozenRows(1); r.getRange('A:F').setWrap(true); r.setColumnWidths(1,3,160); r.setColumnWidths(4,3,320);
 }
@@ -142,11 +142,11 @@ function key_(it){const s=cleanSku_(it.sku),a=amtKey_(it.amount);return s&&s!=='
 function amtKey_(v){return String(v||'').replace(/[^\d]/g,'');}
 function dispName_(name){return String(name||'').replace(/^[\s*＊・\-]+/,'').trim();}
 function existing_(s){const data={orders:new Set()}, last=s.getLastRow(); if(last<2)return data; s.getRange(2,2,last-1,1).getValues().flat().forEach(v=>{const m=String(v||'').match(/[0-9]{3}-[0-9]{7}-[0-9]{7}/); if(m)data.orders.add(m[0]);}); return data;}
-function sortOrderSheet_(s){const last=s.getLastRow(); if(last>2)s.getRange(2,1,last-1,10).sort({column:1,ascending:true}); showFromMinDate_(s);}
+function sortOrderSheet_(s){const last=s.getLastRow(); if(last>2)s.getRange(2,1,last-1,11).sort({column:1,ascending:true}); showFromMinDate_(s);}
 function showFromMinDate_(s){const last=s.getLastRow(); if(last<2)return; s.showRows(2,last-1); const min=new Date(C.minDate+' 00:00:00'), vals=s.getRange(2,1,last-1,1).getDisplayValues().flat(); let st=0,len=0; for(let i=0;i<vals.length;i++){const v=vals[i],d=new Date(String(v).replace(/\//g,'-')+' 00:00:00'), old=v&&d<min; if(old){if(!st)st=i+2;len++;}else if(st){s.hideRows(st,len);st=0;len=0;}} if(st)s.hideRows(st,len);}
 function sheet_(ss,n){return ss.getSheetByName(n)||ss.insertSheet(n);}
 function header_(s,h){const cur=s.getRange(1,1,1,h.length).getValues()[0]; if(h.some((x,i)=>cur[i]!==x))s.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground('#f3f4f6');}
-function migrateOldColumns_(s,old){const last=s.getLastRow(); if(last<2)return; if(old[2]==='\u691c\u7d22\u30ef\u30fc\u30c9'&&old[3]!=='\u691c\u7d22\u30ef\u30fc\u30c9'){const v=s.getRange(2,3,last-1,1).getValues(); s.getRange(2,4,last-1,1).setValues(v); s.getRange(2,3,last-1,1).clearContent();}}
+function migrateOldColumns_(s,old){const last=s.getLastRow(); if(old[4]==='\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1')s.insertColumnBefore(5); if(last<2)return; if(old[2]==='\u691c\u7d22\u30ef\u30fc\u30c9'&&old[3]!=='\u691c\u7d22\u30ef\u30fc\u30c9'){const v=s.getRange(2,3,last-1,1).getValues(); s.getRange(2,4,last-1,1).setValues(v); s.getRange(2,3,last-1,1).clearContent();}}
 function pick_(text,patterns){for(let i=0;i<patterns.length;i++){const m=text.match(patterns[i]); if(m&&m[1])return m[1].trim();} return '';}
 function norm_(text){return String(text||'').replace(/\r/g,'\n').replace(/\u00a0/g,' ').split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join('\n');}
 function mailText_(m){return norm_((m.getPlainBody()||'')+'\n'+html_(m.getBody()||''));}
