@@ -6,7 +6,7 @@ function onOpen(){
     .addItem('Amazon\u6ce8\u6587\u30e1\u30fc\u30eb\u3092\u53d6\u308a\u8fbc\u3080','importAmazonOrderEmails')
     .addSeparator().addItem('\u521d\u671f\u30bb\u30c3\u30c8\u30a2\u30c3\u30d7','setupAmazonOrderImporter')
     .addItem('\u521d\u671f\u8a2d\u5b9a+30\u5206\u81ea\u52d5\u5b9f\u884c','setupAmazonOrderImporterAndTrigger')
-    .addSeparator().addItem('\u51fa\u8377\u4e88\u5b9a\u65e5\u3067\u6607\u9806\u30bd\u30fc\u30c8','sortAmazonResearchSheetAscending')
+    .addSeparator().addItem('\u6ce8\u6587\u65e5\u3067\u6607\u9806\u30bd\u30fc\u30c8','sortAmazonResearchSheetAscending')
     .addItem('2026\u5e746\u6708\u4ee5\u964d\u3060\u3051\u8868\u793a','showShipDatesFromJune2026')
     .addItem('\u65e2\u5b58\u884c\u306e\u6ce8\u6587\u60c5\u5831\u3092Gmail\u304b\u3089\u518d\u4f5c\u6210','refreshExistingOrderDetailsFromGmail')
     .addItem('\u78ba\u8a8d\u7528\u304b\u3089Gmail\u518d\u51e6\u7406','reprocessReviewRowsFromGmail')
@@ -16,7 +16,7 @@ function onOpen(){
 
 function setupAmazonOrderImporter(){
   const ss=SpreadsheetApp.openById(C.id); ss.rename(C.title);
-  const s=sheet_(ss,C.order), old=s.getRange(1,1,1,11).getValues()[0]; migrateOldColumns_(s,old); header_(s,['\u51fa\u8377\u4e88\u5b9a\u65e5','\u6ce8\u6587\u60c5\u5831','\u58f2\u4e0a\u91d1','\u691c\u7d22\u30ef\u30fc\u30c9','\u304a\u5c4a\u3051\u5148','\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1','Amazon','\u30e4\u30d5\u30aa\u30af','\u30e1\u30eb\u30ab\u30ea','\u30b8\u30e2\u30c6\u30a3','\u305d\u306e\u4ed6\u30b5\u30a4\u30c8']);
+  const s=sheet_(ss,C.order), old=s.getRange(1,1,1,11).getValues()[0]; migrateOldColumns_(s,old); header_(s,['\u6ce8\u6587\u65e5 / \u51fa\u8377\u4e88\u5b9a\u65e5','\u6ce8\u6587\u60c5\u5831','\u58f2\u4e0a\u91d1','\u691c\u7d22\u30ef\u30fc\u30c9','\u304a\u5c4a\u3051\u5148','\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1','Amazon','\u30e4\u30d5\u30aa\u30af','\u30e1\u30eb\u30ab\u30ea','\u30b8\u30e2\u30c6\u30a3','\u305d\u306e\u4ed6\u30b5\u30a4\u30c8']);
   s.setFrozenRows(1); s.getRange('A:K').setWrap(true); s.setColumnWidth(1,120); s.setColumnWidth(2,520); s.setColumnWidth(3,100); s.setColumnWidth(4,260); s.setColumnWidth(5,200); s.setColumnWidths(6,6,180);
   const r=sheet_(ss,C.review); header_(r,['\u51e6\u7406\u65e5\u6642','\u30e1\u30fc\u30eb\u53d7\u4fe1\u65e5\u6642','\u30e1\u30fc\u30eb\u4ef6\u540d','\u53d6\u5f97\u3067\u304d\u305f\u60c5\u5831','\u53d6\u5f97\u3067\u304d\u306a\u304b\u3063\u305f\u60c5\u5831','\u30a8\u30e9\u30fc\u5185\u5bb9']);
   r.setFrozenRows(1); r.getRange('A:F').setWrap(true); r.setColumnWidths(1,3,160); r.setColumnWidths(4,3,320);
@@ -31,8 +31,8 @@ function repairAllDuplicateOrderInfo(){const ss=SpreadsheetApp.openById(C.id),s=
 function reprocessReviewRowsFromGmail(){
   const ss=SpreadsheetApp.openById(C.id), os=ss.getSheetByName(C.order)||sheet_(ss,C.order), rs=ss.getSheetByName(C.review)||sheet_(ss,C.review), exists=existing_(os), last=rs.getLastRow(); if(last<2)return;
   const vals=rs.getRange(2,4,last-1,1).getValues(), out=[]; let checked=0, found=0, skipped=0;
-  vals.forEach(r=>{const m=String(r[0]||'').match(/[0-9]{3}-[0-9]{7}-[0-9]{7}/); if(!m)return; checked++; if(exists.orders.has(m[0])){skipped++;return;} const f=findOrderByOrder_(m[0]); if(!f)return; found++; exists.orders.add(f.orderNo); out.push(row_(f));});
-  if(out.length){const row=os.getLastRow()+1; os.getRange(row,1,out.length,4).setValues(out).setWrap(true);dedupeBRows_(row,row+out.length-1); sortOrderSheet_(os);}
+  vals.forEach(r=>{const m=String(r[0]||'').match(/[0-9]{3}-[0-9]{7}-[0-9]{7}/); if(!m)return; checked++; if(exists.orders.has(m[0])){skipped++;return;} const f=findOrderByOrder_(m[0]); if(!f)return; found++; exists.orders.add(f.orderNo); out.push({d:f.orderDate||'',t:f.receivedAt||0,row:row_(f)});});
+  if(out.length){const rows=sortRows_(out), row=os.getLastRow()+1; os.getRange(row,1,rows.length,4).setValues(rows).setWrap(true);dedupeBRows_(row,row+rows.length-1); sortOrderSheet_(os);}
   Logger.log(`\u78ba\u8a8d\u7528\u518d\u51e6\u7406: ${out.length}\u4ef6 / Gmail\u691c\u51fa: ${found}\u6ce8\u6587 / \u91cd\u8907: ${skipped}\u4ef6 / \u78ba\u8a8d: ${checked}\u6ce8\u6587`);
 }
 function refreshExistingOrderDetailsFromGmail(){refreshExistingSalesAmountsFromGmail();}
@@ -41,7 +41,7 @@ function dedupeB_(b){const mark='(?:\\u3010\\d+\\u3011|[\\(\\uff08]\\d+[\\)\\uff
 function dedupeC_(c){const mark='(?:\\u3010\\d+\\u3011|[\\(\\uff08]\\d+[\\)\\uff09])'; if(!(new RegExp(mark)).test(c))return c; const re=new RegExp('(?='+mark+')'), mr=new RegExp('^'+mark+'\\n?'), parts=c.split(re).filter(x=>(new RegExp(mark)).test(x)),seen=new Set(),out=[]; parts.forEach(x=>{const body=x.replace(mr,'').trim(),key=body.replace(/\s/g,''); if(!key||seen.has(key))return; seen.add(key); out.push(body);}); return out.length===1?out[0]:out.map((x,i)=>`\u3010${i+1}\u3011\n${x}`).join('\n');}
 function findOrderByOrder_(order){
   const ths=GmailApp.search(`"${order}" from:${C.sender}`,0,10);
-  for(const th of ths){for(const m of th.getMessages()){const r=parse_(mailText_(m),m.getSubject()); if(r.ok&&r.f.orderNo===order)return r.f;}}
+  for(const th of ths){for(const m of th.getMessages()){const r=parse_(mailText_(m),m.getSubject()); if(r.ok&&r.f.orderNo===order){r.f.receivedAt=m.getDate().getTime();return r.f;}}}
   return null;
 }
 function refreshExistingSalesAmountsFromGmail(){
@@ -79,11 +79,11 @@ function importAmazonOrderEmails(){
       const res=parse_(mailText_(m),m.getSubject());
       if(!res.ok){bad.push([new Date(),m.getDate(),m.getSubject(),JSON.stringify(res.f),res.missing.join(', '),res.error]);return;}
       if(exists.orders.has(res.f.orderNo)){done=true;return;}
-      exists.orders.add(res.f.orderNo); out.push(row_(res.f)); done=true;
+      res.f.receivedAt=m.getDate().getTime(); exists.orders.add(res.f.orderNo); out.push({d:res.f.orderDate||'',t:res.f.receivedAt,row:row_(res.f)}); done=true;
     });
     if(done)th.addLabel(label);
   });
-  if(out.length){let row=os.getLastRow()+1;os.getRange(row,1,out.length,4).setValues(out).setWrap(true);dedupeBRows_(row,row+out.length-1);}
+  if(out.length){const rows=sortRows_(out); let row=os.getLastRow()+1;os.getRange(row,1,rows.length,4).setValues(rows).setWrap(true);dedupeBRows_(row,row+rows.length-1);}
   sortOrderSheet_(os);
   if(bad.length){let row=rs.getLastRow()+1;rs.getRange(row,1,bad.length,6).setValues(bad).setWrap(true);}
   Logger.log(`\u8ffd\u52a0: ${out.length}\u4ef6 / \u78ba\u8a8d\u7528: ${bad.length}\u4ef6`);
@@ -91,8 +91,8 @@ function importAmazonOrderEmails(){
 function recoverProcessedAmazonOrderEmails(){
   setupAmazonOrderImporter();
   const ss=SpreadsheetApp.openById(C.id), os=ss.getSheetByName(C.order), rs=ss.getSheetByName(C.review), exists=existing_(os), out=[], bad=[];
-  GmailApp.search(`from:${C.sender} subject:"${C.subject}" label:"${C.label}"`,0,100).forEach(th=>th.getMessages().forEach(m=>{if(m.getFrom().toLowerCase().indexOf(C.sender)<0||m.getSubject().indexOf(C.subject)<0)return; const res=parse_(mailText_(m),m.getSubject()); if(!res.ok){bad.push([new Date(),m.getDate(),m.getSubject(),JSON.stringify(res.f),res.missing.join(', '),res.error]);return;} if(exists.orders.has(res.f.orderNo))return; exists.orders.add(res.f.orderNo); out.push(row_(res.f));}));
-  if(out.length){let row=os.getLastRow()+1;os.getRange(row,1,out.length,4).setValues(out).setWrap(true);dedupeBRows_(row,row+out.length-1);sortOrderSheet_(os);}
+  GmailApp.search(`from:${C.sender} subject:"${C.subject}" label:"${C.label}"`,0,100).forEach(th=>th.getMessages().forEach(m=>{if(m.getFrom().toLowerCase().indexOf(C.sender)<0||m.getSubject().indexOf(C.subject)<0)return; const res=parse_(mailText_(m),m.getSubject()); if(!res.ok){bad.push([new Date(),m.getDate(),m.getSubject(),JSON.stringify(res.f),res.missing.join(', '),res.error]);return;} if(exists.orders.has(res.f.orderNo))return; res.f.receivedAt=m.getDate().getTime(); exists.orders.add(res.f.orderNo); out.push({d:res.f.orderDate||'',t:res.f.receivedAt,row:row_(res.f)});}));
+  if(out.length){const rows=sortRows_(out); let row=os.getLastRow()+1;os.getRange(row,1,rows.length,4).setValues(rows).setWrap(true);dedupeBRows_(row,row+rows.length-1);sortOrderSheet_(os);}
   if(bad.length){let row=rs.getLastRow()+1;rs.getRange(row,1,bad.length,6).setValues(bad).setWrap(true);}
   Logger.log(`\u53d6\u308a\u3053\u307c\u3057\u56de\u5fa9: ${out.length}\u4ef6 / \u78ba\u8a8d\u7528: ${bad.length}\u4ef6`);
 }
@@ -108,9 +108,10 @@ function trigger_(min){
 
 function parse_(text,subject){
   const orderNo=pick_(text,[/\u6ce8\u6587\u756a\u53f7\s*[:\uff1a]?\s*([0-9]{3}-[0-9]{7}-[0-9]{7})/,/\b([0-9]{3}-[0-9]{7}-[0-9]{7})\b/]);
+  const orderDate=order_(text);
   const parts=blocks_(text), sub=subjectItem_(subject);
   const items=(parts.length?parts:[text]).map(p=>{const it={shipDate:ship_(p)||ship_(text),name:name_(p)||sub.name,sku:sku_(p)||sub.sku,amount:amount_(p)}; it.word=word_(it.name); if(!it.sku)it.sku='\u53d6\u5f97\u4e0d\u53ef'; if(!it.amount)it.amount='\u53d6\u5f97\u4e0d\u53ef'; return it;}).filter(it=>it.shipDate&&it.name&&it.word).filter((it,i,a)=>a.findIndex(x=>key_(x)===key_(it))===i);
-  const f={orderNo:orderNo,shipDate:items[0]?items[0].shipDate:'',items:items};
+  const f={orderNo:orderNo,orderDate:orderDate,shipDate:items[0]?items[0].shipDate:'',items:items};
   const miss=[]; if(!f.orderNo)miss.push('orderNo'); if(!f.shipDate)miss.push('shipDate'); if(!items.length)miss.push('items');
   return miss.length?{ok:false,f:f,missing:miss,error:'\u5fc5\u9808\u9805\u76ee\u3092\u53d6\u5f97\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f: '+miss.join(', ')}:{ok:true,f:f,missing:[],error:''};
 }
@@ -118,6 +119,7 @@ function parse_(text,subject){
 function ship_(text){
   return date_(pick_(text,[/\u51fa\s*\u8377\s*\u4e88\s*\u5b9a\s*\u65e5\s*[:\uff1a]?\s*([0-9]{4}[\/.\-\u5e74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65e5?)/,/\u51fa\s*\u8377\s*\u4e88\s*\u5b9a\s*[:\uff1a]?\s*([0-9]{4}[\/.\-\u5e74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65e5?)/,/\u767a\s*\u9001\s*\u4e88\s*\u5b9a\s*\u65e5\s*[:\uff1a]?\s*([0-9]{4}[\/.\-\u5e74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65e5?)/]));
 }
+function order_(text){return date_(pick_(text,[/\u6ce8\s*\u6587\s*\u65e5\s*[:\uff1a]?\s*([0-9]{4}[\/.\-\u5e74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65e5?)/]));}
 
 function blocks_(text){const re=/(?:^|\n)(\u51fa\s*\u8377\s*\u4e88\s*\u5b9a\s*\u65e5[\s\S]*?)(?=\n\u51fa\s*\u8377\s*\u4e88\s*\u5b9a\s*\u65e5|$)/g,a=[...String(text||'').matchAll(re)].map(m=>m[1]); return a.filter(x=>/\u5546\s*\u54c1\s*(?:\u540d)?\s*[:\uff1a]/.test(x));}
 function name_(text){return pick_(text,[/\u5546\s*\u54c1\s*\u540d\s*[:\uff1a]\s*([\s\S]+?)(?=\n|\u30b3\u30f3\u30c7\u30a3\u30b7\u30e7\u30f3\s*[:\uff1a]|S\s*K\s*U\s*[:\uff1a]|\u6570\u91cf\s*[:\uff1a]|\u4fa1\u683c\s*[:\uff1a]|\u7a0e\u91d1\s*[:\uff1a]|Amazon\u624b\u6570\u6599\s*[:\uff1a]|\u58f2\s*\u4e0a\s*\u91d1\s*[:\uff1a]|$)/,/\u5546\s*\u54c1\s*[:\uff1a]\s*([\s\S]+?)(?=\n|\u30b3\u30f3\u30c7\u30a3\u30b7\u30e7\u30f3\s*[:\uff1a]|S\s*K\s*U\s*[:\uff1a]|\u6570\u91cf\s*[:\uff1a]|\u4fa1\u683c\s*[:\uff1a]|\u7a0e\u91d1\s*[:\uff1a]|Amazon\u624b\u6570\u6599\s*[:\uff1a]|\u58f2\s*\u4e0a\s*\u91d1\s*[:\uff1a]|$)/,/\u30bf\u30a4\u30c8\u30eb\s*[:\uff1a]\s*([^\n]+)/]).replace(/\s+/g,' ').trim();}
@@ -143,7 +145,8 @@ function model_(name){
 }
 function fallbackWord_(name){return name.replace(/[\u3010\u3011\[\]]/g,' ').replace(/[\uff08(][^)\uff09]*[)\uff09]/g,' ').replace(/^[\s*＊・\-]+/,' ').replace(/\s+/g,' ').trim().slice(0,80);}
 
-function row_(f){return [f.shipDate,summary_(f),amounts_(f),words_(f)];}
+function row_(f){return [dateCell_(f),summary_(f),amounts_(f),words_(f)];}
+function dateCell_(f){const a=[]; if(f.orderDate)a.push(`\u6ce8\u6587\u65e5\uff1a${f.orderDate}`); if(f.shipDate)a.push(`\u51fa\u8377\u4e88\u5b9a\u65e5\uff1a${f.shipDate}`); return a.join('\n');}
 function summary_(f){const rows=[`\u6ce8\u6587\u756a\u53f7\uff1a${f.orderNo}`]; f.items.forEach((it,i)=>{if(f.items.length>1)rows.push(`\u3010${i+1}\u3011`); rows.push(`\u5546\u54c1\u540d\uff1a${dispName_(it.name)}`,`SKU\uff1a${it.sku}`);}); return rows.join('\n');}
 function amounts_(f){return f.items.length===1?amtKey_(f.items[0].amount):f.items.map((it,i)=>`\u3010${i+1}\u3011\n${amtKey_(it.amount)}`).join('\n');}
 function words_(f){return dedupeC_(f.items.length===1?f.items[0].word:f.items.map((it,i)=>`\u3010${i+1}\u3011\n${it.word}`).join('\n'));}
@@ -152,8 +155,9 @@ function key_(it){const s=cleanSku_(it.sku),a=amtKey_(it.amount);return s&&s!=='
 function amtKey_(v){return String(v||'').replace(/[^\d]/g,'');}
 function dispName_(name){return String(name||'').replace(/^[\s*＊・\-]+/,'').trim();}
 function existing_(s){const data={orders:new Set()}, last=s.getLastRow(); if(last<2)return data; s.getRange(2,2,last-1,1).getValues().flat().forEach(v=>{const m=String(v||'').match(/[0-9]{3}-[0-9]{7}-[0-9]{7}/); if(m)data.orders.add(m[0]);}); return data;}
-function sortOrderSheet_(s){const last=s.getLastRow(),cols=Math.max(11,s.getLastColumn()); if(last>2)s.getRange(2,1,last-1,cols).sort({column:1,ascending:true}); showFromMinDate_(s);}
-function showFromMinDate_(s){const last=s.getLastRow(); if(last<2)return; s.showRows(2,last-1); const min=new Date(C.minDate+' 00:00:00'), vals=s.getRange(2,1,last-1,1).getDisplayValues().flat(); let st=0,len=0; for(let i=0;i<vals.length;i++){const v=vals[i],d=new Date(String(v).replace(/\//g,'-')+' 00:00:00'), old=v&&d<min; if(old){if(!st)st=i+2;len++;}else if(st){s.hideRows(st,len);st=0;len=0;}} if(st)s.hideRows(st,len);}
+function sortRows_(rows){return rows.sort((a,b)=>String(a.d||'').localeCompare(String(b.d||''))||(a.t||0)-(b.t||0)).map(x=>x.row||x);}
+function sortOrderSheet_(s){const last=s.getLastRow(),cols=Math.max(11,s.getLastColumn()); if(last>2){s.insertColumnsAfter(cols,2); const k=cols+1, vals=s.getRange(2,1,last-1,1).getDisplayValues().flat().map((v,i)=>[dateKey_(v),i+1]); s.getRange(1,k,1,2).setValues([['__orderDate','__seq']]); s.getRange(2,k,vals.length,2).setValues(vals); s.getRange(2,1,last-1,cols+2).sort([{column:k,ascending:true},{column:k+1,ascending:true}]); s.deleteColumns(k,2);} showFromMinDate_(s);}
+function showFromMinDate_(s){const last=s.getLastRow(); if(last<2)return; s.showRows(2,last-1); const min=new Date(C.minDate+' 00:00:00'), vals=s.getRange(2,1,last-1,1).getDisplayValues().flat(); let st=0,len=0; for(let i=0;i<vals.length;i++){const v=dateKey_(vals[i]),d=new Date(String(v).replace(/\//g,'-')+' 00:00:00'), old=v&&d<min; if(old){if(!st)st=i+2;len++;}else if(st){s.hideRows(st,len);st=0;len=0;}} if(st)s.hideRows(st,len);}
 function sheet_(ss,n){return ss.getSheetByName(n)||ss.insertSheet(n);}
 function header_(s,h){const cur=s.getRange(1,1,1,h.length).getValues()[0]; if(h.some((x,i)=>cur[i]!==x))s.getRange(1,1,1,h.length).setValues([h]).setFontWeight('bold').setBackground('#f3f4f6');}
 function migrateOldColumns_(s,old){const last=s.getLastRow(); if(old[4]==='\u30ea\u30b5\u30fc\u30c1\u72b6\u6cc1')s.insertColumnBefore(5); if(last<2)return; if(old[2]==='\u691c\u7d22\u30ef\u30fc\u30c9'&&old[3]!=='\u691c\u7d22\u30ef\u30fc\u30c9'){const v=s.getRange(2,3,last-1,1).getValues(); s.getRange(2,4,last-1,1).setValues(v); s.getRange(2,3,last-1,1).clearContent();}}
@@ -161,6 +165,7 @@ function pick_(text,patterns){for(let i=0;i<patterns.length;i++){const m=text.ma
 function norm_(text){return String(text||'').replace(/\r/g,'\n').replace(/\u00a0/g,' ').split('\n').map(l=>l.replace(/\s+/g,' ').trim()).filter(Boolean).join('\n');}
 function mailText_(m){return norm_((m.getPlainBody()||'')+'\n'+html_(m.getBody()||''));}
 function date_(v){if(!v)return ''; const m=v.replace(/\s+/g,'').match(/([0-9]{4})[\/.\-\u5e74]([0-9]{1,2})[\/.\-\u6708]([0-9]{1,2})/); return m?`${m[1]}/${String(m[2]).padStart(2,'0')}/${String(m[3]).padStart(2,'0')}`:v;}
+function dateKey_(v){const m=String(v||'').match(/\u6ce8\u6587\u65e5\s*[:\uff1a]\s*([0-9]{4}\/[0-9]{2}\/[0-9]{2})/); return m?m[1]:date_(String(v||''));}
 function html_(h){return String(h||'').replace(/<br\s*\/?>/gi,'\n').replace(/<\/p>/gi,'\n').replace(/<[^>]+>/g,' ').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');}
 function half_(v){return String(v||'').replace(/[\uff10-\uff19]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0));}
 
