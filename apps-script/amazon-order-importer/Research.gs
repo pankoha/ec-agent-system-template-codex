@@ -41,6 +41,7 @@ const RESEARCH_STATUS = {
 };
 
 const JUNK_PATTERN = /ジャンク|ジャンク品|動作未確認|動作未チェック|不動品?|通電不可|通電未確認|部品取り|破損(?:品|あり)?|壊れています|使えません|訳あり|難あり|現状品|修理前提|再生不可|読み込み不可|読込不可|視聴不可|欠品(?:あり)?|ディスク欠品|巻数不足|巻抜け|一部欠品/i;
+const JIMOTY_REJECT_PATTERN = /ジャンク|動作未確認|不動品?|通電不可|部品取り|破損|壊れています|使えません|修理前提|再生不可|読み込み不可|読込不可|視聴不可|欠品(?:あり)?|ディスク欠品|巻数不足|巻抜け|一部欠品/i;
 const UNAVAILABLE_PATTERN = /売り切れ|売切|SOLD\s*OUT|\bSOLD\b|販売終了|掲載終了|オークション.{0,8}終了|この商品は削除|ページが見つかりません|404\s*Not\s*Found/i;
 const NEW_CONDITION_PATTERN = /新品|新品未使用|未使用品|未開封|brand\s*new|new\b/i;
 const USED_CONDITION_PATTERN = /中古|レンタル落ち|レンタルアップ|使用済|used\b/i;
@@ -102,6 +103,12 @@ const OTHER_RESEARCH_SITES = [
     resultHost: /2ndstreet\.jp\/goods\/detail\/goodsId\//i,
     searchUrl: (keyword) => `https://www.2ndstreet.jp/search?keyword=${encodeURIComponent(keyword)}`,
   },
+  {
+    key: 'NetOff',
+    label: 'ネットオフ',
+    resultHost: /netoff\.co\.jp\/detail\/[0-9]+\//i,
+    searchUrl: (keyword) => `https://www.netoff.co.jp/cmdtyallsearch/?word=${encodeURIComponent(keyword)}`,
+  },
 ];
 
 function setupResearchManagementSheet_(spreadsheet) {
@@ -117,7 +124,6 @@ function setupResearchManagementSheet_(spreadsheet) {
     sheet.setColumnWidth(5, 120);
     sheet.setColumnWidths(6, 5, 230);
   }
-  hideRowsBeforeDisplayDate_(sheet);
   return sheet;
 }
 
@@ -162,7 +168,6 @@ function syncResearchManagementSheet_(spreadsheet) {
   if (additions.length) {
     researchSheet.getRange(researchSheet.getLastRow() + 1, 1, additions.length, 10).setValues(additions).setWrap(true);
   }
-  hideRowsBeforeDisplayDate_(researchSheet);
   return additions.length;
 }
 
@@ -307,8 +312,7 @@ function researchOneOrder(rowData) {
   RESEARCH_SITES.forEach((site) => {
     const siteResult = researchSiteForKeywords_(site, rowData);
     const accepted = filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData);
-    const lines = accepted
-      .filter((item) => {
+    const uniqueItems = accepted.filter((item) => {
         const canonical = canonicalResearchUrl_(item.url);
         if (!canonical || seenThisRun.has(canonical)) {
           return false;
@@ -316,9 +320,20 @@ function researchOneOrder(rowData) {
         seenThisRun.add(canonical);
         item.url = canonical;
         return true;
-      })
-      .map((item) => formatResearchResult_(item, false));
-    added += appendUrlToMainSheet_(rowData.row, site.column, lines);
+      });
+    const lines = uniqueItems.map((item) => formatResearchResult_(item, false));
+    const addedForSite = appendUrlToMainSheet_(rowData.row, site.column, lines);
+    added += addedForSite;
+    const unknownShipping = uniqueItems.find((item) => !item.shippingKnown);
+    if (addedForSite > 0 && unknownShipping) {
+      needsReview = true;
+      writeResearchCheck_(
+        rowData,
+        '要確認',
+        `${site.label}: 送料不明のため商品価格だけで仮判定しました。`,
+        unknownShipping.url,
+      );
+    }
     if (!siteResult.ok || siteResult.rejectedForMissingData > 0) {
       needsReview = true;
       writeResearchCheck_(rowData, '要確認', `${site.label}: 自動判定できない候補または取得制限があります。`, siteResult.manualUrl);
@@ -343,7 +358,18 @@ function researchOneOrder(rowData) {
       writeResearchCheck_(rowData, '要確認', `${site.label}: 自動判定できない候補または取得制限があります。`, siteResult.manualUrl);
     }
   });
-  added += appendUrlToMainSheet_(rowData.row, 10, otherItems.map((item) => formatResearchResult_(item, true)));
+  const addedOther = appendUrlToMainSheet_(rowData.row, 10, otherItems.map((item) => formatResearchResult_(item, true)));
+  added += addedOther;
+  const unknownOtherShipping = otherItems.find((item) => !item.shippingKnown);
+  if (addedOther > 0 && unknownOtherShipping) {
+    needsReview = true;
+    writeResearchCheck_(
+      rowData,
+      '要確認',
+      `${unknownOtherShipping.siteLabel || unknownOtherShipping.site}: 送料不明のため商品価格だけで仮判定しました。`,
+      unknownOtherShipping.url,
+    );
+  }
 
   return { added, needsReview };
 }
@@ -475,7 +501,10 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
       return false;
     }
     const text = `${item.title || ''} ${item.condition || ''} ${item.contextText || ''}`;
-    if (JUNK_PATTERN.test(text) || UNAVAILABLE_PATTERN.test(text)) {
+    const rejectedCondition = siteName === 'Jimoty'
+      ? JIMOTY_REJECT_PATTERN.test(text)
+      : JUNK_PATTERN.test(text);
+    if (rejectedCondition || UNAVAILABLE_PATTERN.test(text)) {
       return false;
     }
     if (isDvd && !isCompleteDvdCandidate_(text, rowData.expectedVolume)) {
@@ -484,12 +513,9 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
     if (!isAllowedSiteCondition_(siteName, item.condition, text, rowData.newOnly)) {
       return false;
     }
-    // C列の上限内であることを確定できない候補は自動追記しない。
-    // 送料不明を0円扱いすると、実際には上限超過の商品を記録してしまう。
-    if (!item.shippingKnown) {
-      return false;
-    }
-    const total = Number(item.price) + Number(item.shipping || 0);
+    // 指示書16・31: 送料不明時は商品価格だけで仮判定し、
+    // 出力側で「送料要確認」を明記する。
+    const total = Number(item.price) + (item.shippingKnown ? Number(item.shipping || 0) : 0);
     return total <= Number(maxPrice);
   });
 }
@@ -508,15 +534,14 @@ function isAllowedSiteCondition_(siteName, condition, text, newOnly) {
     return /新品|未使用に近い|目立った傷や汚れなし|やや傷や汚れあり|傷や汚れあり/i.test(value);
   }
   if (siteName === 'Jimoty') {
-    return NEW_CONDITION_PATTERN.test(value) || USED_CONDITION_PATTERN.test(value);
+    // 指示書19: ジモティはジャンク等の除外語がなければ候補化できる。
+    // ジャンク・販売終了の判定は呼び出し元で先に実施済み。
+    return true;
   }
   return NEW_CONDITION_PATTERN.test(value) || USED_CONDITION_PATTERN.test(value);
 }
 
 function isCompleteDvdCandidate_(text, expectedVolume) {
-  if (JUNK_PATTERN.test(text)) {
-    return false;
-  }
   if (!expectedVolume) {
     return true;
   }
@@ -603,6 +628,7 @@ function normalizeResearchProductUrl_(rawUrl, siteName) {
       Surugaya: 'https://www.suruga-ya.jp',
       Offmall: 'https://netmall.hardoff.co.jp',
       SecondStreet: 'https://www.2ndstreet.jp',
+      NetOff: 'https://www.netoff.co.jp',
     };
     url = `${hosts[siteName] || ''}${url}`;
   }
@@ -632,11 +658,14 @@ function normalizeResearchProductUrl_(rawUrl, siteName) {
   if (siteName === 'SecondStreet' && (match = url.match(/2ndstreet\.jp\/goods\/detail\/goodsId\/([0-9]+)\/shopsId\/([0-9]+)/i))) {
     return `https://www.2ndstreet.jp/goods/detail/goodsId/${match[1]}/shopsId/${match[2]}`;
   }
+  if (siteName === 'NetOff' && (match = url.match(/netoff\.co\.jp\/detail\/([0-9]+)/i))) {
+    return `https://www.netoff.co.jp/detail/${match[1]}/`;
+  }
   return '';
 }
 
 function canonicalResearchUrl_(url) {
-  const siteNames = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Surugaya', 'Offmall', 'SecondStreet'];
+  const siteNames = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Surugaya', 'Offmall', 'SecondStreet', 'NetOff'];
   for (let index = 0; index < siteNames.length; index += 1) {
     const normalized = normalizeResearchProductUrl_(url, siteNames[index]);
     if (normalized) {

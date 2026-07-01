@@ -73,8 +73,6 @@ function setupAmazonOrderImporter() {
     orderSheet.setColumnWidths(3, 1, 110);
     orderSheet.setColumnWidths(4, 1, 260);
   }
-  hideRowsBeforeDisplayDate_(orderSheet);
-
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   if (isSheetBlank_(reviewSheet)) {
     ensureHeader_(reviewSheet, [
@@ -114,6 +112,9 @@ function sortAmazonResearchSheetAscending() {
 
 function showShipDatesFromJune2026() {
   sortAmazonResearchSheetAscending();
+  const spreadsheet = getTargetSpreadsheet_();
+  const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  hideRowsBeforeDisplayDate_(orderSheet);
 }
 
 function repairRows2240To2440() {
@@ -163,7 +164,6 @@ function reprocessReviewRowsFromGmail() {
     const startRow = orderSheet.getLastRow() + 1;
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
-    hideRowsBeforeDisplayDate_(orderSheet);
   }
 
   Logger.log(`確認用再処理: ${rowsToAppend.length}件 / Gmail検出: ${foundOrderCount}注文 / 重複: ${skippedOrderCount}件 / 確認: ${checkedOrderCount}注文`);
@@ -366,8 +366,6 @@ function importAmazonOrderEmails() {
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
   }
-
-  hideRowsBeforeDisplayDate_(orderSheet);
 
   if (reviewRows.length > 0) {
     const startRow = reviewSheet.getLastRow() + 1;
@@ -692,7 +690,6 @@ function sortOrderSheet_(sheet) {
   }
 
   sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
-  hideRowsBeforeDisplayDate_(sheet);
 }
 
 function hideRowsBeforeDisplayDate_(sheet) {

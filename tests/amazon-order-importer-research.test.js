@@ -186,8 +186,13 @@ assert.equal(
 );
 assert.equal(
   filter([candidate({ shippingKnown: false, shipping: 0 })]).length,
+  1,
+  'unknown shipping must use the item price for provisional cap evaluation',
+);
+assert.equal(
+  filter([candidate({ price: 12000, shippingKnown: false, shipping: 0 })]).length,
   0,
-  'unknown shipping must not be appended because the total cannot be proven within the cap',
+  'unknown shipping must still reject an item whose price alone exceeds the cap',
 );
 assert.match(
   sandbox.formatResearchResult_(candidate({ shippingKnown: false, shipping: 0 }), false),
@@ -207,13 +212,23 @@ assert.equal(
 );
 assert.equal(
   filter([candidate({ site: 'Jimoty', condition: '状態要確認' })], 10000, 'Jimoty').length,
-  0,
-  'Jimoty candidates with an unknown condition must not be appended',
+  1,
+  'Jimoty candidates may pass without a recognized condition when they are not junk',
 );
 assert.equal(
   filter([candidate({ site: 'Jimoty', condition: '中古' })], 10000, 'Jimoty').length,
   1,
   'Jimoty candidates may pass when condition and shipping are explicit',
+);
+assert.equal(
+  filter([candidate({ site: 'Jimoty', condition: '現状品' })], 10000, 'Jimoty').length,
+  1,
+  'Jimoty ambiguous condition wording must remain eligible for manual review',
+);
+assert.equal(
+  filter([candidate({ site: 'Jimoty', title: '動作未確認 DMR-2W101' })], 10000, 'Jimoty').length,
+  0,
+  'Jimoty candidates with explicit prohibited wording must be rejected',
 );
 
 assert.equal(
@@ -278,6 +293,11 @@ assert.equal(
   sandbox.canonicalResearchUrl_('https://www.2ndstreet.jp/goods/detail/goodsId/2219310049359/shopsId/30298?x=1'),
   'https://www.2ndstreet.jp/goods/detail/goodsId/2219310049359/shopsId/30298',
   'Second Street product URLs must be canonicalized',
+);
+assert.equal(
+  sandbox.canonicalResearchUrl_('https://www.netoff.co.jp/detail/0014218084/?track=x'),
+  'https://www.netoff.co.jp/detail/0014218084/',
+  'NetOff product URLs must be canonicalized',
 );
 assert.equal(
   sandbox.canonicalResearchUrl_('https://item.rakuten.co.jp/com/assets/domain-resources/favicon.ico'),
@@ -389,6 +409,16 @@ assert.doesNotMatch(
   `${codeSource}\n${researchSource}`,
   /\.showRows\(|\.showColumns\(|\.insertColumn/i,
   'manually hidden rows and deleted columns must never be restored automatically',
+);
+assert.doesNotMatch(
+  researchSource,
+  /hideRowsBeforeDisplayDate_\(/,
+  'hourly research and synchronization must preserve the current row visibility',
+);
+assert.equal(
+  (codeSource.match(/hideRowsBeforeDisplayDate_\(/g) || []).length,
+  2,
+  'date-based hiding must only exist as one explicit menu action plus its helper definition',
 );
 
 console.log('amazon-order-importer research tests: PASS');
