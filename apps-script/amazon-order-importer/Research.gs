@@ -52,7 +52,8 @@ const RESEARCH_COLUMN_ALIASES = {
   memo: ['確認メモ', 'メモ'],
 };
 
-const RESEARCH_RESULT_KEYS = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Other'];
+const RESEARCH_RESULT_KEYS = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten'];
+const LEGACY_RESEARCH_RESULT_KEYS = RESEARCH_RESULT_KEYS.concat(['Other']);
 
 const RESEARCH_STATUS = {
   pending: '未リサーチ',
@@ -478,7 +479,7 @@ function isDuplicateUrlInResearchManagement(orderNumber, url) {
   if (!found.sheet || found.rows.length !== 1) {
     return false;
   }
-  return RESEARCH_RESULT_KEYS.some((key) => {
+  return LEGACY_RESEARCH_RESULT_KEYS.some((key) => {
     const columnNumber = found.columns[key];
     return columnNumber && isDuplicateUrlInCell_(found.sheet.getRange(found.rows[0], columnNumber).getValue(), url);
   });
@@ -490,7 +491,7 @@ function researchManagementHasCandidates_(orderNumber, context) {
   if (!found.sheet || found.rows.length !== 1) {
     return false;
   }
-  return RESEARCH_RESULT_KEYS.some((key) => {
+  return LEGACY_RESEARCH_RESULT_KEYS.some((key) => {
     const columnNumber = found.columns[key];
     return columnNumber && String(found.sheet.getRange(found.rows[0], columnNumber).getDisplayValue() || '').trim();
   });
@@ -984,7 +985,7 @@ function researchOneOrder(rowData) {
   });
 
   const otherItems = [];
-  OTHER_RESEARCH_SITES.forEach((site) => {
+  [].forEach((site) => {
     const siteResult = researchSiteForKeywords_(site, rowData);
     const accepted = filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData);
     accepted.forEach((item) => {

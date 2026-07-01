@@ -62,7 +62,7 @@ function onOpen() {
     .addSeparator()
     .addItem('リサーチ管理表を同期', 'syncResearchManagementSheet')
     .addItem('旧リサーチ管理シートを削除', 'deleteLegacyResearchManagementSheet')
-    .addItem('リサーチを手動実行', 'researchListedItemsHourly')
+    .addItem('リサーチを手動実行', 'researchAllVisibleManagementRowsNow')
     .addItem('表示中の全行を今すぐリサーチ', 'researchAllVisibleManagementRowsNow')
     .addItem('1時間リサーチトリガーを設定', 'setupHourlyTrigger')
     .addItem('注文番号連動トリガーを設定', 'setupOnChangeTrigger')

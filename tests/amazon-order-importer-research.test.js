@@ -8,6 +8,19 @@ const importerDir = path.join(root, 'apps-script', 'amazon-order-importer');
 const codeSource = fs.readFileSync(path.join(importerDir, 'Code.gs'), 'utf8');
 const researchSource = fs.readFileSync(path.join(importerDir, 'Research.gs'), 'utf8');
 const expectedBundle = `${codeSource.trimEnd()}\n\n${researchSource.trimEnd()}\n`;
+const expectedAsciiBundle = Array.from(expectedBundle, (char) => {
+  const codePoint = char.codePointAt(0);
+  if (char === '\r' || char === '\n' || char === '\t' || (codePoint >= 32 && codePoint <= 126)) {
+    return char;
+  }
+  if (codePoint <= 0xFFFF) {
+    return `\\u${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+  }
+  const value = codePoint - 0x10000;
+  const high = 0xD800 + (value >> 10);
+  const low = 0xDC00 + (value & 0x3FF);
+  return `\\u${high.toString(16).toUpperCase().padStart(4, '0')}\\u${low.toString(16).toUpperCase().padStart(4, '0')}`;
+}).join('');
 
 assert.equal(
   fs.readFileSync(path.join(importerDir, 'Code.paste.gs'), 'utf8'),
@@ -18,6 +31,11 @@ assert.equal(
   fs.readFileSync(path.join(importerDir, 'Code.compact.gs'), 'utf8'),
   expectedBundle,
   'Code.compact.gs must stay synchronized with Code.gs and Research.gs',
+);
+assert.equal(
+  fs.readFileSync(path.join(importerDir, 'Code.paste.ascii.gs'), 'utf8'),
+  expectedAsciiBundle,
+  'Code.paste.ascii.gs must stay synchronized with Code.gs and Research.gs',
 );
 
 const sandbox = {
