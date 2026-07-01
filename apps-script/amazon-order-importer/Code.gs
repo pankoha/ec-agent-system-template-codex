@@ -74,7 +74,7 @@ function setupAmazonOrderImporter() {
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   if (isSheetBlank_(orderSheet)) {
     ensureHeader_(orderSheet, [
-      '出荷期限日',
+      '注文日 / 出荷予定日',
       '注文情報',
       '売上金',
       '検索ワード',

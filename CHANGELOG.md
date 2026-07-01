@@ -14,6 +14,8 @@ All notable changes to this template will be documented in this file.
 - A列を`注文日`/`出荷予定日`の2行表示に戻し、新規追加行を注文日優先で昇順追加
 - Gmail自動取得で新規追加した注文をリサーチ管理表へ即時同期し、追加注文だけ同じ実行内でリサーチ開始
 - 後続リサーチでは既存候補より安い、または状態が良い候補だけを追記し、条件が悪い新規URLは追記しない
+- リサーチ管理表A列をメイン表と同じ`注文日`/`出荷予定日`2行表示で同期し、毎時リサーチ対象をリサーチ管理表の表示行へ修正
+- リサーチ管理表J列を楽天市場候補URL欄として扱い、既存の`その他サイト`列は互換列として認識
 - `lazyweb-design-research` skill: Lazyweb MCP / Chrome / Webを使ったLP・UI参考調査と実装前デザイン方向性整理
 - `sns-research` skill: 無料枠優先のSNS・YouTube公開データ調査、競合分析、投稿案・LP訴求抽出
 - `pox-analysis` skill: Points of X（POD/POP/POF）による自社 vs 競合1社の差別化・ポジショニング分析

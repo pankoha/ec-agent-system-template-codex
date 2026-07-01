@@ -4,7 +4,7 @@
  * Invariants:
  * - Every visible row remains eligible on every hourly run, regardless of status.
  * - Existing URLs are never deleted or overwritten.
- * - Only canonical, new, non-duplicate product URLs are appended.
+ * - Only canonical, new, non-duplicate, better product URLs are appended.
  * - A candidate must be within the C-column sales amount.
  * - SKU containing "muza" accepts new items only.
  */
@@ -19,7 +19,7 @@ const RESEARCH_AUTOMATION_CONFIG = {
 };
 
 const RESEARCH_HEADERS = [
-  '出荷期限日',
+  '注文日 / 出荷予定日',
   '注文情報',
   '売上金',
   '検索ワード',
@@ -28,13 +28,13 @@ const RESEARCH_HEADERS = [
   'ヤフオク',
   'メルカリ',
   'ジモティ',
-  'その他サイト',
+  '楽天市場',
   '最終リサーチ日時',
   '確認メモ',
 ];
 
 const RESEARCH_COLUMN_ALIASES = {
-  shipDate: ['出荷期限日', '出荷予定日'],
+  shipDate: ['注文日/出荷予定日', '注文日 / 出荷予定日', '出荷期限日', '出荷予定日'],
   orderInfo: ['注文情報'],
   orderNumber: ['注文番号'],
   maxPrice: ['売上金'],
@@ -44,10 +44,13 @@ const RESEARCH_COLUMN_ALIASES = {
   Yahoo: ['ヤフオク'],
   Mercari: ['メルカリ'],
   Jimoty: ['ジモティ'],
+  Rakuten: ['楽天市場', 'その他サイト'],
   Other: ['その他サイト'],
   lastResearchedAt: ['最終リサーチ日時', '最終確認日時'],
   memo: ['確認メモ', 'メモ'],
 };
+
+const RESEARCH_RESULT_KEYS = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Other'];
 
 const RESEARCH_STATUS = {
   pending: '未リサーチ',
@@ -94,15 +97,16 @@ const RESEARCH_SITES = [
     resultHost: /jmty\.jp\/.+\/article-/i,
     searchUrl: (keyword) => `https://jmty.jp/all/sale?keyword=${encodeURIComponent(keyword)}`,
   },
-];
-
-const OTHER_RESEARCH_SITES = [
   {
     key: 'Rakuten',
     label: '楽天市場',
+    column: 10,
     resultHost: /item\.rakuten\.co\.jp\//i,
     searchUrl: (keyword) => `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(keyword)}/`,
   },
+];
+
+const OTHER_RESEARCH_SITES = [
   {
     key: 'Surugaya',
     label: '駿河屋',
@@ -290,7 +294,7 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
     setMappedValue_(row, researchColumns.maxPrice, salesAmountNumber_(mappedValue_(source, orderColumns.maxPrice)));
     setMappedValue_(row, researchColumns.keyword, mappedValue_(source, orderColumns.keyword));
     setMappedValue_(row, researchColumns.status, mappedValue_(source, orderColumns.status) || RESEARCH_STATUS.pending);
-    ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Other'].forEach((key) => {
+    RESEARCH_RESULT_KEYS.forEach((key) => {
       setMappedValue_(row, researchColumns[key], mappedValue_(source, orderColumns[key]));
     });
     additions.push(row);
@@ -407,6 +411,8 @@ function researchResultColumn_(columns, siteName) {
     'メルカリ': 'Mercari',
     Jimoty: 'Jimoty',
     'ジモティ': 'Jimoty',
+    Rakuten: 'Rakuten',
+    '楽天市場': 'Rakuten',
     Other: 'Other',
     'その他サイト': 'Other',
   };
@@ -436,7 +442,7 @@ function isDuplicateUrlInResearchManagement(orderNumber, url) {
   if (!found.sheet || found.rows.length !== 1) {
     return false;
   }
-  return ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Other'].some((key) => {
+  return RESEARCH_RESULT_KEYS.some((key) => {
     const columnNumber = found.columns[key];
     return columnNumber && isDuplicateUrlInCell_(found.sheet.getRange(found.rows[0], columnNumber).getValue(), url);
   });
@@ -448,7 +454,7 @@ function researchManagementHasCandidates_(orderNumber, context) {
   if (!found.sheet || found.rows.length !== 1) {
     return false;
   }
-  return ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Other'].some((key) => {
+  return RESEARCH_RESULT_KEYS.some((key) => {
     const columnNumber = found.columns[key];
     return columnNumber && String(found.sheet.getRange(found.rows[0], columnNumber).getDisplayValue() || '').trim();
   });
@@ -604,13 +610,16 @@ function researchImportedOrderRowsAfterImportCore_(spreadsheet, orderNumbers) {
   }
 
   const managementContext = buildResearchManagementContext_(spreadsheet);
-  const sheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const sheet = managementContext.sheet;
+  if (!sheet || (typeof sheet.isSheetHidden === 'function' && sheet.isSheetHidden())) {
+    return { synced: syncResult.appended, processed: 0, added: 0, errors: 0, skipped: uniqueOrderNumbers.length };
+  }
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
     return { synced: syncResult.appended, processed: 0, added: 0, errors: 0, skipped: uniqueOrderNumbers.length };
   }
 
-  const columns = researchColumnMap_(sheet);
+  const columns = managementContext.columns;
   const values = sheet.getRange(2, 1, lastRow - 1, Math.max(1, sheet.getLastColumn())).getValues();
   const rowsByOrderNumber = new Map();
   values.forEach((row, index) => {
@@ -702,18 +711,24 @@ function researchListedItemsHourly() {
   try {
     const startedAt = Date.now();
     const spreadsheet = getTargetSpreadsheet_();
-    syncResearchManagementByOrderNumber_(spreadsheet);
+    const syncResult = syncResearchManagementByOrderNumber_(spreadsheet);
+    if (!syncResult.available) {
+      return;
+    }
     const managementContext = buildResearchManagementContext_(spreadsheet);
-    const sheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+    const sheet = managementContext.sheet;
+    if (!sheet || (typeof sheet.isSheetHidden === 'function' && sheet.isSheetHidden())) {
+      return;
+    }
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) {
       return;
     }
 
-    const columns = researchColumnMap_(sheet);
+    const columns = managementContext.columns;
     const visibleRows = visibleResearchRows_(sheet, lastRow);
     const properties = PropertiesService.getScriptProperties();
-    const cursorKey = 'mainResearchVisibleRowCursor';
+    const cursorKey = 'managementResearchVisibleRowCursor';
     const cursor = Math.max(0, Number(properties.getProperty(cursorKey)) || 0);
     const orderedRows = rotateRows_(visibleRows, cursor);
     let processed = 0;

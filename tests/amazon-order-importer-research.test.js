@@ -509,6 +509,12 @@ function makeSheet(headers, rows, hidden = false) {
     isSheetHidden() {
       return hidden;
     },
+    isRowHiddenByUser() {
+      return false;
+    },
+    isRowHiddenByFilter() {
+      return false;
+    },
     getParent() {
       return this.parent;
     },
@@ -695,9 +701,10 @@ assert.deepEqual(
     Yahoo: legacyColumns.Yahoo,
     Mercari: legacyColumns.Mercari,
     Jimoty: legacyColumns.Jimoty,
+    Rakuten: legacyColumns.Rakuten,
     Other: legacyColumns.Other,
   })),
-  { status: 6, Amazon: 7, Yahoo: 8, Mercari: 9, Jimoty: 10, Other: 11 },
+  { status: 6, Amazon: 7, Yahoo: 8, Mercari: 9, Jimoty: 10, Rakuten: 11, Other: 11 },
   'header mapping must preserve the existing A:K layout with a recipient column',
 );
 
@@ -752,6 +759,11 @@ assert.equal(
   managementSheet.grid.filter((row) => String(row[1] || '').includes(orderTwo)).length,
   1,
   'a missing management order must be added exactly once',
+);
+assert.equal(
+  managementSheet.grid.find((row) => String(row[1] || '').includes(orderTwo))[0],
+  '2026/07/02',
+  'management A column must mirror the main A column exactly',
 );
 
 const unresolvedMainSheet = makeSheet(
@@ -840,7 +852,7 @@ const importedMainSheet = makeSheet(
   ],
 );
 const importedManagementSheet = makeSheet(
-  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト', '最終リサーチ日時', '確認メモ'],
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', '最終リサーチ日時', '確認メモ'],
   [],
 );
 const importedReviewRows = [];
@@ -852,6 +864,11 @@ const importedSpreadsheet = makeSpreadsheet({
 const originalResearchOneOrder = sandbox.researchOneOrder;
 sandbox.researchOneOrder = (rowData) => {
   assert.equal(rowData.orderNumber, importedOrder, 'only the newly imported order should be researched immediately');
+  assert.equal(
+    rowData.sheet,
+    importedManagementSheet,
+    'immediate research must run on the synchronized management row',
+  );
   rowData.sheet.getRange(rowData.row, rowData.columns.Mercari).setValue('7,000円｜中古｜https://jp.mercari.com/item/imported777');
   return {
     added: 1,
@@ -870,13 +887,52 @@ assert.deepEqual(
   'new Gmail imports must sync to management and start research immediately',
 );
 assert.equal(importedManagementSheet.getLastRow(), 2, 'the imported order must be appended to the management sheet');
-assert.equal(importedMainSheet.grid[1][4], '候補あり', 'the imported main row status must be updated by immediate research');
+assert.equal(importedManagementSheet.grid[1][0], '注文日：2026/07/01\n出荷予定日：2026/07/09', 'management A column must mirror the two-line main A column');
+assert.equal(importedManagementSheet.grid[1][4], '候補あり', 'the imported management row status must be updated by immediate research');
 assert.match(importedManagementSheet.grid[1][7], /imported777/, 'immediate research results must sync to management');
 assert.equal(
   Object.prototype.toString.call(importedManagementSheet.grid[1][10]),
   '[object Date]',
   'immediate research must update the management last-researched timestamp',
 );
+
+const hourlyOrder = '888-8888888-8888888';
+const hourlyMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場'],
+  [
+    ['注文日：2026/07/01\n出荷予定日：2026/07/10', `注文番号：${hourlyOrder}\n商品名：毎時対象\nSKU：sku888`, 11000, 'AUTO-888', '', '', '', '', '', ''],
+  ],
+);
+const hourlyManagementSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', '最終リサーチ日時', '確認メモ'],
+  [
+    ['注文日：2026/07/01\n出荷予定日：2026/07/10', `注文番号：${hourlyOrder}\n商品名：毎時対象\nSKU：sku888`, 11000, 'AUTO-888', '', '', '', '', '', '', '', ''],
+  ],
+);
+const hourlySpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: hourlyMainSheet,
+  リサーチ管理表: hourlyManagementSheet,
+  確認用: { appendRow: () => {} },
+});
+sandbox.__activeSpreadsheet = hourlySpreadsheet;
+sandbox.__properties = {};
+sandbox.researchOneOrder = (rowData) => {
+  assert.equal(rowData.sheet, hourlyManagementSheet, 'hourly research must process displayed management rows');
+  assert.equal(rowData.orderNumber, hourlyOrder);
+  rowData.sheet.getRange(rowData.row, rowData.columns.Rakuten).setValue('6,000円｜中古｜https://item.rakuten.co.jp/shop/hourly888/');
+  return {
+    added: 1,
+    needsReview: false,
+    resultsBySite: {
+      Rakuten: ['6,000円｜中古｜https://item.rakuten.co.jp/shop/hourly888/'],
+    },
+    memos: [],
+  };
+};
+sandbox.researchListedItemsHourly();
+sandbox.researchOneOrder = originalResearchOneOrder;
+assert.equal(hourlyManagementSheet.grid[1][4], '候補あり', 'hourly management row status must be updated');
+assert.match(hourlyManagementSheet.grid[1][9], /hourly888/, 'hourly Rakuten result must be written to J column');
 
 assert.match(researchSource, /候補あり・候補なし等の状態にかかわらず|regardless of status/);
 assert.doesNotMatch(
