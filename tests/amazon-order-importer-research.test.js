@@ -133,6 +133,7 @@ assert.equal(
 const newOrderNoticeResult = sandbox.parseAmazonOrderEmail_(sandbox.getMessageText_(newOrderNoticeMessage));
 assert.equal(newOrderNoticeResult.ok, true, 'new-order seller notification wording must parse');
 assert.equal(newOrderNoticeResult.fields.orderNumber, '249-8883596-5682228');
+assert.equal(newOrderNoticeResult.fields.orderDate, '2026/07/01');
 assert.equal(newOrderNoticeResult.fields.shipDate, '2026/07/09');
 const subjectFallbackMessage = {
   getFrom: () => 'seller-notification@amazon.co.jp',
@@ -163,14 +164,14 @@ assert.match(
   'DVD subject fallback must still generate a usable search word',
 );
 const unsortedRows = [
-  ['2026/07/09', '注文番号：249-8883596-5682228', 12800, 'DMR-2W101'],
-  ['2026/07/02', '注文番号：111-1111111-1111111', 10000, 'ABC-1'],
+  ['注文日：2026/07/09\n出荷予定日：2026/07/10', '注文番号：249-8883596-5682228', 12800, 'DMR-2W101'],
+  ['注文日：2026/07/02\n出荷予定日：2026/07/09', '注文番号：111-1111111-1111111', 10000, 'ABC-1'],
 ];
 sandbox.sortOrderRowsForAppend_(unsortedRows);
 assert.deepEqual(
-  unsortedRows.map((row) => row[0]),
-  ['2026/07/02', '2026/07/09'],
-  'newly imported order rows must be appended in ascending ship-date order',
+  unsortedRows.map((row) => sandbox.displayOrderDateNumber_(row[0])),
+  [20260702, 20260709],
+  'newly imported order rows must be appended in ascending order-date order',
 );
 
 const protectedHeaderSheet = {
@@ -209,6 +210,7 @@ assert.equal(manualStatusCell.value, '担当者確認中', 'manual status input 
 sandbox.testKeywordGeneration();
 assert.deepEqual(
   Array.from(sandbox.buildOrderRow_({
+    orderDate: '2026/07/01',
     shipDate: '2026/07/01',
     orderNumber: '123-1234567-1234567',
     items: [{
@@ -219,7 +221,7 @@ assert.deepEqual(
     }],
   })),
   [
-    '2026/07/01',
+    '注文日：2026/07/01\n出荷予定日：2026/07/01',
     '注文番号：123-1234567-1234567\n商品名：Panasonic DMR-2W101-K\nSKU：sku-1',
     12800,
     'DMR-2W101',

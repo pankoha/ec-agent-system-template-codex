@@ -54,7 +54,7 @@ function onOpen() {
     .addItem('初期セットアップ', 'setupAmazonOrderImporter')
     .addItem('初期設定+30分自動実行', 'setupAmazonOrderImporterAndTrigger')
     .addSeparator()
-    .addItem('出荷予定日で昇順ソート', 'sortAmazonResearchSheetAscending')
+    .addItem('注文日で昇順ソート', 'sortAmazonResearchSheetAscending')
     .addItem('2026年6月30日以降だけ表示', 'showShipDatesFromJune2026')
     .addItem('132行目以降を削除済みにして削除', 'deleteRowsFrom132AndRememberOrders')
     .addItem('既存行の注文情報をGmailから再作成', 'refreshExistingOrderDetailsFromGmail')
@@ -485,6 +485,7 @@ function parseAmazonOrderEmail_(text) {
     .map((block) => {
       const item = {
         shipDate: extractShipDate_(block) || extractShipDate_(text),
+        orderDate: extractOrderDate_(block) || extractOrderDate_(text),
         productName: extractProductName_(block),
         sku: extractSku_(block),
         salesAmount: extractSalesAmount_(block),
@@ -505,6 +506,7 @@ function parseAmazonOrderEmail_(text) {
 
   const fields = {
     shipDate: items[0] ? items[0].shipDate : '',
+    orderDate: items[0] ? items[0].orderDate : extractOrderDate_(text),
     orderNumber,
     items,
   };
@@ -568,6 +570,15 @@ function extractShipDate_(text) {
     /出\s*荷\s*予\s*定\s*日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
     /出\s*荷\s*予\s*定\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
     /発\s*送\s*予\s*定\s*日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
+  ];
+  return normalizeDate_(firstMatch_(text, patterns));
+}
+
+function extractOrderDate_(text) {
+  const patterns = [
+    /注\s*文\s*日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
+    /ご注文日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
+    /注文日時\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
   ];
   return normalizeDate_(firstMatch_(text, patterns));
 }
@@ -728,17 +739,24 @@ function buildOrderRow_(fields) {
     .map((item) => salesAmountNumber_(item.salesAmount))
     .filter((amount) => amount > 0);
   return [
-    fields.shipDate,
+    buildOrderDateCell_(fields),
     buildOrderSummary_(fields),
     amounts.reduce((total, amount) => total + amount, 0) || '',
     buildSearchWords_(fields),
   ];
 }
 
+function buildOrderDateCell_(fields) {
+  return [
+    fields.orderDate ? `注文日：${fields.orderDate}` : '',
+    fields.shipDate ? `出荷予定日：${fields.shipDate}` : '',
+  ].filter(Boolean).join('\n') || fields.shipDate || '';
+}
+
 function sortOrderRowsForAppend_(rows) {
   rows.sort((left, right) => {
-    const leftDate = displayShipDateNumber_(left[0]);
-    const rightDate = displayShipDateNumber_(right[0]);
+    const leftDate = displayOrderDateNumber_(left[0]) || displayShipDateNumber_(left[0]);
+    const rightDate = displayOrderDateNumber_(right[0]) || displayShipDateNumber_(right[0]);
     if (leftDate && rightDate && leftDate !== rightDate) {
       return leftDate - rightDate;
     }
@@ -834,6 +852,13 @@ function displayShipDateNumber_(value) {
   const labeled = text.match(/出荷(?:期限|予定)日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
   const fallback = text.match(/([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
   const normalized = normalizeDate_((labeled && labeled[1]) || (fallback && fallback[1]) || '');
+  return Number(String(normalized || '').replace(/[^\d]/g, '')) || 0;
+}
+
+function displayOrderDateNumber_(value) {
+  const text = String(value || '');
+  const labeled = text.match(/注文日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
+  const normalized = normalizeDate_((labeled && labeled[1]) || '');
   return Number(String(normalized || '').replace(/[^\d]/g, '')) || 0;
 }
 
