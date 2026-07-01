@@ -134,6 +134,34 @@ const newOrderNoticeResult = sandbox.parseAmazonOrderEmail_(sandbox.getMessageTe
 assert.equal(newOrderNoticeResult.ok, true, 'new-order seller notification wording must parse');
 assert.equal(newOrderNoticeResult.fields.orderNumber, '249-8883596-5682228');
 assert.equal(newOrderNoticeResult.fields.shipDate, '2026/07/09');
+const subjectFallbackMessage = {
+  getFrom: () => 'seller-notification@amazon.co.jp',
+  getSubject: () => '注文確定： pricetar-dvdr-3715 鉄のラインバレル [レンタル落ち] 全13巻セット [マーケットプレイスDVDセット商品',
+  getPlainBody: () => [
+    'Amazonで新規の注文がありました。出荷予定日2026/07/09までに商品の出荷を完了してください。',
+    '注文番号：249-8883596-5682228',
+    '注文日：2026/07/01',
+    '売上金：5,980円',
+  ].join('\n'),
+  getBody: () => '',
+};
+const subjectFallbackText = sandbox.getMessageText_(subjectFallbackMessage);
+const subjectFallbackResult = sandbox.parseAmazonOrderEmail_(subjectFallbackText);
+assert.equal(
+  subjectFallbackResult.ok,
+  true,
+  '注文確定 subject lines must supply SKU/product when the body omits 商品名 and SKU labels',
+);
+assert.equal(subjectFallbackResult.fields.items[0].sku, 'pricetar-dvdr-3715');
+assert.equal(
+  subjectFallbackResult.fields.items[0].productName,
+  '鉄のラインバレル [レンタル落ち] 全13巻セット [マーケットプレイスDVDセット商品',
+);
+assert.match(
+  subjectFallbackResult.fields.items[0].searchWord,
+  /鉄のラインバレル/,
+  'DVD subject fallback must still generate a usable search word',
+);
 const unsortedRows = [
   ['2026/07/09', '注文番号：249-8883596-5682228', 12800, 'DMR-2W101'],
   ['2026/07/02', '注文番号：111-1111111-1111111', 10000, 'ABC-1'],

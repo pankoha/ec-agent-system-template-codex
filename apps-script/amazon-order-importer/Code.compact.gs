@@ -581,11 +581,19 @@ function extractProductName_(text) {
     /商\s*品\s*名\s*[:：]\s*([\s\S]+?)(?=\n|コンディション\s*[:：]|S\s*K\s*U\s*[:：]|数量\s*[:：]|価格\s*[:：]|税金\s*[:：]|Amazon手数料\s*[:：]|売\s*上\s*金\s*[:：]|$)/,
     /商\s*品\s*[:：]\s*([\s\S]+?)(?=\n|コンディション\s*[:：]|S\s*K\s*U\s*[:：]|数量\s*[:：]|価格\s*[:：]|税金\s*[:：]|Amazon手数料\s*[:：]|売\s*上\s*金\s*[:：]|$)/,
     /タイトル\s*[:：]\s*(.+)/,
+    /(?:^|\n)件名\s*[:：]\s*注文確定\s*[:：]\s*[^\s　]+[\s　]+(.+)/,
+    /(?:^|\n)注文確定\s*[:：]\s*[^\s　]+[\s　]+(.+)/,
   ]).replace(/\s+/g, ' ').trim();
 }
 
 function extractSku_(text) {
-  return normalizeSku_(firstMatch_(text, [/\bS\s*K\s*U\s*[:：]?\s*([^\n]+)/i, /出品者\s*S\s*K\s*U\s*[:：]?\s*([^\n]+)/i, /商品\s*S\s*K\s*U\s*[:：]?\s*([^\n]+)/i]));
+  return normalizeSku_(firstMatch_(text, [
+    /\bS\s*K\s*U\s*[:：]?\s*([^\n]+)/i,
+    /出品者\s*S\s*K\s*U\s*[:：]?\s*([^\n]+)/i,
+    /商品\s*S\s*K\s*U\s*[:：]?\s*([^\n]+)/i,
+    /(?:^|\n)件名\s*[:：]\s*注文確定\s*[:：]\s*([^\s　]+)/,
+    /(?:^|\n)注文確定\s*[:：]\s*([^\s　]+)/,
+  ]));
 }
 
 function extractSalesAmount_(text) {
@@ -1081,7 +1089,7 @@ function normalizeEmailText_(text) {
 }
 
 function getMessageText_(message) {
-  return normalizeEmailText_(`${message.getPlainBody() || ''}\n${stripHtml_(message.getBody() || '')}`);
+  return normalizeEmailText_(`件名：${message.getSubject ? message.getSubject() || '' : ''}\n${message.getPlainBody() || ''}\n${stripHtml_(message.getBody() || '')}`);
 }
 
 function normalizeDate_(value) {
