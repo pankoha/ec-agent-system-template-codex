@@ -529,6 +529,36 @@ assert.equal(
   'deleted-order registry must be part of duplicate/exclusion checks',
 );
 
+const autoDeletedOrder = '666-6666666-6666666';
+const autoProtectMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード'],
+  Array.from({ length: 130 }, () => ['', '', '', '']).concat([
+    ['2026/07/03', `注文番号：${autoDeletedOrder}\n商品名：自動削除対象`, 7000, 'AUTO'],
+  ]),
+);
+const autoProtectDeletedSheet = makeSheet(['記録日時', '注文番号', '理由', '元行', '注文情報'], []);
+const autoProtectSnapshotSheet = makeSheet(['注文番号'], [[autoDeletedOrder]]);
+const autoProtectSpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: autoProtectMainSheet,
+  削除済み注文: autoProtectDeletedSheet,
+  注文番号スナップショット: autoProtectSnapshotSheet,
+});
+assert.equal(
+  sandbox.enforceProtectedDeletedRows_(autoProtectSpreadsheet, autoProtectMainSheet, '自動保護テスト'),
+  1,
+  'automatic protection must delete row 132+ without requiring a menu click',
+);
+assert.equal(
+  autoProtectDeletedSheet.grid.some((row) => row[1] === autoDeletedOrder),
+  true,
+  'automatic protection must remember row 132+ order numbers as deleted',
+);
+assert.equal(
+  autoProtectMainSheet.grid.some((row) => String(row[1] || '').includes(autoDeletedOrder)),
+  false,
+  'automatic protection must remove reappeared deleted rows',
+);
+
 const legacyColumns = sandbox.researchColumnMap_(
   makeSheet(['出荷期限日', '注文情報', '売上金', '検索ワード', 'お届け先', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト'], []),
 );

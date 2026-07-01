@@ -22,6 +22,7 @@ const AMAZON_ORDER_IMPORTER_CONFIG = {
   threadLimitPerRun: 100,
   gmailSearchWindow: 'newer_than:30d',
   protectedDeleteStartRow: 132,
+  autoDeleteProtectedRows: true,
   minShipDate: '2026/06/01',
   displayFromDate: '2026/06/30',
 };
@@ -138,6 +139,7 @@ function setupAmazonOrderImporter() {
     }
   }
 
+  enforceProtectedDeletedRows_(spreadsheet, orderSheet, '初期設定・自動取込前の132行目以降保護');
   setupResearchManagementSheet_(spreadsheet);
 }
 
@@ -163,7 +165,7 @@ function showShipDatesFromJune2026() {
 function deleteRowsFrom132AndRememberOrders() {
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
-  return deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet);
+  return deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet, 'メニュー実行による132行目以降の削除');
 }
 
 function repairRows2240To2440() {
@@ -174,6 +176,7 @@ function reprocessReviewRowsFromGmail() {
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
+  enforceProtectedDeletedRows_(spreadsheet, orderSheet, '確認用再処理前の132行目以降保護');
   recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, '確認用再処理前の削除検知');
   const existingOrders = loadExistingOrders_(orderSheet);
   const lastRow = reviewSheet.getLastRow();
@@ -373,6 +376,7 @@ function importAmazonOrderEmails() {
   const orderSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   const processedLabel = getOrCreateGmailLabel_(AMAZON_ORDER_IMPORTER_CONFIG.processedLabelName);
+  enforceProtectedDeletedRows_(spreadsheet, orderSheet, 'Gmail取込前の132行目以降保護');
   recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, 'Gmail取込前の削除検知');
   const existingOrders = loadExistingOrders_(orderSheet);
   const rowsToAppend = [];
@@ -951,7 +955,19 @@ function recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, reason) 
   return recorded;
 }
 
-function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet) {
+function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
+  if (!AMAZON_ORDER_IMPORTER_CONFIG.autoDeleteProtectedRows) {
+    return 0;
+  }
+  return deleteRowsFromProtectedStartAndRememberOrders_(
+    spreadsheet,
+    orderSheet,
+    reason || '132行目以降の自動保護',
+    true,
+  );
+}
+
+function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet, reason, skipManagementSync) {
   const startRow = AMAZON_ORDER_IMPORTER_CONFIG.protectedDeleteStartRow || 132;
   const lastRow = orderSheet.getLastRow();
   if (lastRow < startRow) {
@@ -960,10 +976,11 @@ function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet)
   }
 
   const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, startRow, lastRow);
-  appendDeletedOrderRecords_(spreadsheet, records, `${startRow}行目以降の削除指定`);
+  appendDeletedOrderRecords_(spreadsheet, records, reason || `${startRow}行目以降の削除指定`);
   orderSheet.deleteRows(startRow, lastRow - startRow + 1);
   updateKnownOrderSnapshot_(orderSheet);
-  if (typeof syncResearchManagementByOrderNumber_ === 'function'
+  if (!skipManagementSync
+    && typeof syncResearchManagementByOrderNumber_ === 'function'
     && typeof RESEARCH_AUTOMATION_CONFIG !== 'undefined'
     && spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName)) {
     syncResearchManagementByOrderNumber_(spreadsheet);
