@@ -14,10 +14,14 @@ const AMAZON_ORDER_IMPORTER_CONFIG = {
   orderSheetName: '注文確定商品リサーチ表',
   researchSheetName: 'リサーチ管理表',
   reviewSheetName: '確認用',
+  deletedOrderSheetName: '削除済み注文',
+  snapshotSheetName: '注文番号スナップショット',
   processedLabelName: 'Amazon注文確定_処理済み',
   sender: 'seller-notification@amazon.co.jp',
   subjectKeyword: '注文確定',
-  threadLimitPerRun: 50,
+  threadLimitPerRun: 100,
+  gmailSearchWindow: 'newer_than:30d',
+  protectedDeleteStartRow: 132,
   minShipDate: '2026/06/01',
   displayFromDate: '2026/06/30',
 };
@@ -49,13 +53,15 @@ function onOpen() {
     .addItem('初期設定+30分自動実行', 'setupAmazonOrderImporterAndTrigger')
     .addSeparator()
     .addItem('出荷予定日で昇順ソート', 'sortAmazonResearchSheetAscending')
-    .addItem('2026年6月以降だけ表示', 'showShipDatesFromJune2026')
+    .addItem('2026年6月30日以降だけ表示', 'showShipDatesFromJune2026')
+    .addItem('132行目以降を削除済みにして削除', 'deleteRowsFrom132AndRememberOrders')
     .addItem('既存行の注文情報をGmailから再作成', 'refreshExistingOrderDetailsFromGmail')
     .addItem('確認用からGmail再処理', 'reprocessReviewRowsFromGmail')
     .addSeparator()
     .addItem('リサーチ管理表を同期', 'syncResearchManagementSheet')
     .addItem('リサーチを手動実行', 'researchListedItemsHourly')
     .addItem('1時間リサーチトリガーを設定', 'setupHourlyTrigger')
+    .addItem('注文番号連動トリガーを設定', 'setupOnChangeTrigger')
     .addToUi();
 }
 
@@ -65,13 +71,26 @@ function setupAmazonOrderImporter() {
 
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   if (isSheetBlank_(orderSheet)) {
-    ensureHeader_(orderSheet, ['出荷期限日', '注文情報', '売上金', '検索ワード']);
+    ensureHeader_(orderSheet, [
+      '出荷期限日',
+      '注文情報',
+      '売上金',
+      '検索ワード',
+      'リサーチ状況',
+      'Amazon',
+      'ヤフオク',
+      'メルカリ',
+      'ジモティ',
+      'その他サイト',
+    ]);
     orderSheet.setFrozenRows(1);
-    orderSheet.getRange('A:D').setWrap(true);
+    orderSheet.getRange('A:J').setWrap(true);
     orderSheet.setColumnWidths(1, 1, 120);
     orderSheet.setColumnWidths(2, 1, 520);
     orderSheet.setColumnWidths(3, 1, 110);
     orderSheet.setColumnWidths(4, 1, 260);
+    orderSheet.setColumnWidths(5, 1, 120);
+    orderSheet.setColumnWidths(6, 5, 230);
   }
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   if (isSheetBlank_(reviewSheet)) {
@@ -95,6 +114,30 @@ function setupAmazonOrderImporter() {
     reviewSheet.setColumnWidths(4, 9, 260);
   }
 
+  const deletedOrderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.deletedOrderSheetName);
+  if (isSheetBlank_(deletedOrderSheet)) {
+    ensureHeader_(deletedOrderSheet, [
+      '記録日時',
+      '注文番号',
+      '理由',
+      '元行',
+      '注文情報',
+    ]);
+    deletedOrderSheet.setFrozenRows(1);
+    deletedOrderSheet.getRange('A:E').setWrap(true);
+    deletedOrderSheet.setColumnWidths(1, 1, 160);
+    deletedOrderSheet.setColumnWidths(2, 1, 180);
+    deletedOrderSheet.setColumnWidths(3, 3, 260);
+  }
+
+  const snapshotSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.snapshotSheetName);
+  if (isSheetBlank_(snapshotSheet)) {
+    ensureHeader_(snapshotSheet, ['注文番号']);
+    if (typeof snapshotSheet.hideSheet === 'function') {
+      snapshotSheet.hideSheet();
+    }
+  }
+
   setupResearchManagementSheet_(spreadsheet);
 }
 
@@ -102,6 +145,7 @@ function setupAmazonOrderImporterAndTrigger() {
   setupAmazonOrderImporter();
   installTimeDrivenTrigger_(30);
   setupHourlyTrigger();
+  setupOnChangeTrigger();
 }
 
 function sortAmazonResearchSheetAscending() {
@@ -111,10 +155,15 @@ function sortAmazonResearchSheetAscending() {
 }
 
 function showShipDatesFromJune2026() {
-  sortAmazonResearchSheetAscending();
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   hideRowsBeforeDisplayDate_(orderSheet);
+}
+
+function deleteRowsFrom132AndRememberOrders() {
+  const spreadsheet = getTargetSpreadsheet_();
+  const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  return deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet);
 }
 
 function repairRows2240To2440() {
@@ -125,6 +174,7 @@ function reprocessReviewRowsFromGmail() {
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
+  recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, '確認用再処理前の削除検知');
   const existingOrders = loadExistingOrders_(orderSheet);
   const lastRow = reviewSheet.getLastRow();
   if (lastRow < 2) {
@@ -145,13 +195,17 @@ function reprocessReviewRowsFromGmail() {
 
     const orderNumber = orderNumberMatch[0];
     checkedOrderCount += 1;
-    if (existingOrders.orderNumbers.has(orderNumber)) {
+    if (existingOrders.orderNumbers.has(orderNumber) || existingOrders.deletedOrderNumbers.has(orderNumber)) {
       skippedOrderCount += 1;
       return;
     }
 
     const fields = findOrderFieldsByOrderNumber_(orderNumber);
     if (!fields) {
+      return;
+    }
+    if (!isDisplayShipDateAllowed_(fields.shipDate)) {
+      skippedOrderCount += 1;
       return;
     }
 
@@ -165,6 +219,7 @@ function reprocessReviewRowsFromGmail() {
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
   }
+  updateKnownOrderSnapshot_(orderSheet);
 
   Logger.log(`確認用再処理: ${rowsToAppend.length}件 / Gmail検出: ${foundOrderCount}注文 / 重複: ${skippedOrderCount}件 / 確認: ${checkedOrderCount}注文`);
 }
@@ -318,15 +373,12 @@ function importAmazonOrderEmails() {
   const orderSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   const processedLabel = getOrCreateGmailLabel_(AMAZON_ORDER_IMPORTER_CONFIG.processedLabelName);
+  recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, 'Gmail取込前の削除検知');
   const existingOrders = loadExistingOrders_(orderSheet);
   const rowsToAppend = [];
   const reviewRows = [];
 
-  const query = [
-    `from:${AMAZON_ORDER_IMPORTER_CONFIG.sender}`,
-    `subject:"${AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword}"`,
-    `-label:"${AMAZON_ORDER_IMPORTER_CONFIG.processedLabelName}"`,
-  ].join(' ');
+  const query = buildAmazonOrderGmailQuery_();
 
   const threads = GmailApp.search(query, 0, AMAZON_ORDER_IMPORTER_CONFIG.threadLimitPerRun);
   threads.forEach((thread) => {
@@ -346,7 +398,13 @@ function importAmazonOrderEmails() {
         return;
       }
 
-      if (existingOrders.orderNumbers.has(result.fields.orderNumber)) {
+      if (existingOrders.orderNumbers.has(result.fields.orderNumber)
+        || existingOrders.deletedOrderNumbers.has(result.fields.orderNumber)) {
+        shouldMarkProcessed = true;
+        return;
+      }
+
+      if (!isDisplayShipDateAllowed_(result.fields.shipDate)) {
         shouldMarkProcessed = true;
         return;
       }
@@ -372,8 +430,17 @@ function importAmazonOrderEmails() {
     reviewSheet.getRange(startRow, 1, reviewRows.length, 12).setValues(reviewRows);
     reviewSheet.getRange(startRow, 1, reviewRows.length, 12).setWrap(true);
   }
+  updateKnownOrderSnapshot_(orderSheet);
 
   Logger.log(`追加: ${rowsToAppend.length}件 / 確認用: ${reviewRows.length}件`);
+}
+
+function buildAmazonOrderGmailQuery_() {
+  return [
+    `from:${AMAZON_ORDER_IMPORTER_CONFIG.sender}`,
+    AMAZON_ORDER_IMPORTER_CONFIG.gmailSearchWindow || '',
+    `{subject:"${AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword}" "${AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword}"}`,
+  ].filter(Boolean).join(' ');
 }
 
 function installTimeDrivenTriggerEvery15Minutes() {
@@ -672,7 +739,10 @@ function loadExistingOrders_(sheet) {
   const values = sheet.getLastRow() < 2
     ? []
     : sheet.getRange(2, 2, sheet.getLastRow() - 1, 1).getValues().flat();
-  const orders = { orderNumbers: new Set() };
+  const orders = {
+    orderNumbers: new Set(),
+    deletedOrderNumbers: loadDeletedOrderNumbers_(sheet.getParent()),
+  };
   values.forEach((value) => {
     const text = String(value || '');
     const orderNumberMatch = text.match(/[0-9]{3}-[0-9]{7}-[0-9]{7}/);
@@ -732,6 +802,12 @@ function displayShipDateNumber_(value) {
   return Number(String(normalized || '').replace(/[^\d]/g, '')) || 0;
 }
 
+function isDisplayShipDateAllowed_(value) {
+  const displayFrom = Number(AMAZON_ORDER_IMPORTER_CONFIG.displayFromDate.replace(/[^\d]/g, ''));
+  const rowDate = displayShipDateNumber_(value);
+  return !rowDate || rowDate >= displayFrom;
+}
+
 function buildReviewRow_(message, fields, missing, error) {
   return [
     new Date(),
@@ -750,8 +826,149 @@ function buildReviewRow_(message, fields, missing, error) {
 }
 
 function isTargetMessage_(message) {
-  return message.getFrom().toLowerCase().indexOf(AMAZON_ORDER_IMPORTER_CONFIG.sender) !== -1
-    && message.getSubject().indexOf(AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword) !== -1;
+  if (message.getFrom().toLowerCase().indexOf(AMAZON_ORDER_IMPORTER_CONFIG.sender) === -1) {
+    return false;
+  }
+
+  const subject = message.getSubject() || '';
+  if (subject.indexOf(AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword) !== -1) {
+    return true;
+  }
+
+  const text = getMessageText_(message);
+  return text.indexOf(AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword) !== -1
+    && !!extractOrderNumber_(text);
+}
+
+function getOrderNumberRecordsFromOrderSheet_(sheet, startRow, endRow) {
+  const lastRow = sheet.getLastRow();
+  const firstRow = Math.max(2, startRow || 2);
+  const finalRow = Math.min(lastRow, endRow || lastRow);
+  if (lastRow < 2 || finalRow < firstRow) {
+    return [];
+  }
+
+  return sheet.getRange(firstRow, 1, finalRow - firstRow + 1, Math.min(4, Math.max(1, sheet.getLastColumn())))
+    .getValues()
+    .map((row, index) => {
+      const orderInfo = String(row[1] || '');
+      const orderNumber = extractOrderNumber_(orderInfo);
+      return {
+        orderNumber,
+        rowNumber: firstRow + index,
+        orderInfo,
+      };
+    })
+    .filter((record) => record.orderNumber);
+}
+
+function loadDeletedOrderNumbers_(spreadsheet) {
+  const sheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.deletedOrderSheetName);
+  if (sheet.getLastRow() < 2) {
+    return new Set();
+  }
+
+  return new Set(sheet.getRange(2, 2, sheet.getLastRow() - 1, 1)
+    .getValues()
+    .flat()
+    .map((value) => String(value || '').trim())
+    .filter(Boolean));
+}
+
+function appendDeletedOrderRecords_(spreadsheet, records, reason) {
+  const sheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.deletedOrderSheetName);
+  const deletedOrderNumbers = loadDeletedOrderNumbers_(spreadsheet);
+  const rows = [];
+  records.forEach((record) => {
+    if (!record.orderNumber || deletedOrderNumbers.has(record.orderNumber)) {
+      return;
+    }
+    deletedOrderNumbers.add(record.orderNumber);
+    rows.push([
+      new Date(),
+      record.orderNumber,
+      reason || '手動削除検知',
+      record.rowNumber || '',
+      record.orderInfo || '',
+    ]);
+  });
+
+  if (rows.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 5).setValues(rows).setWrap(true);
+  }
+  return rows.length;
+}
+
+function loadKnownOrderSnapshot_(spreadsheet) {
+  const sheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.snapshotSheetName);
+  if (sheet.getLastRow() < 2) {
+    return new Set();
+  }
+
+  return new Set(sheet.getRange(2, 1, sheet.getLastRow() - 1, 1)
+    .getValues()
+    .flat()
+    .map((value) => String(value || '').trim())
+    .filter(Boolean));
+}
+
+function updateKnownOrderSnapshot_(orderSheet) {
+  const spreadsheet = orderSheet.getParent();
+  const snapshotSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.snapshotSheetName);
+  const orderNumbers = Array.from(new Set(getOrderNumberRecordsFromOrderSheet_(orderSheet)
+    .map((record) => record.orderNumber)))
+    .sort();
+
+  if (snapshotSheet.getLastRow() > 1) {
+    snapshotSheet.getRange(2, 1, snapshotSheet.getLastRow() - 1, 1).clearContent();
+  }
+  if (orderNumbers.length) {
+    snapshotSheet.getRange(2, 1, orderNumbers.length, 1).setValues(orderNumbers.map((orderNumber) => [orderNumber]));
+  }
+  if (typeof snapshotSheet.hideSheet === 'function') {
+    snapshotSheet.hideSheet();
+  }
+}
+
+function recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, reason) {
+  const previous = loadKnownOrderSnapshot_(spreadsheet);
+  if (!previous.size) {
+    updateKnownOrderSnapshot_(orderSheet);
+    return 0;
+  }
+
+  const currentRecords = getOrderNumberRecordsFromOrderSheet_(orderSheet);
+  const current = new Set(currentRecords.map((record) => record.orderNumber));
+  const deletedRecords = Array.from(previous)
+    .filter((orderNumber) => !current.has(orderNumber))
+    .map((orderNumber) => ({
+      orderNumber,
+      rowNumber: '',
+      orderInfo: '',
+    }));
+  const recorded = appendDeletedOrderRecords_(spreadsheet, deletedRecords, reason || '手動削除検知');
+  updateKnownOrderSnapshot_(orderSheet);
+  return recorded;
+}
+
+function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet) {
+  const startRow = AMAZON_ORDER_IMPORTER_CONFIG.protectedDeleteStartRow || 132;
+  const lastRow = orderSheet.getLastRow();
+  if (lastRow < startRow) {
+    updateKnownOrderSnapshot_(orderSheet);
+    return 0;
+  }
+
+  const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, startRow, lastRow);
+  appendDeletedOrderRecords_(spreadsheet, records, `${startRow}行目以降の削除指定`);
+  orderSheet.deleteRows(startRow, lastRow - startRow + 1);
+  updateKnownOrderSnapshot_(orderSheet);
+  if (typeof syncResearchManagementByOrderNumber_ === 'function'
+    && typeof RESEARCH_AUTOMATION_CONFIG !== 'undefined'
+    && spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName)) {
+    syncResearchManagementByOrderNumber_(spreadsheet);
+  }
+  return lastRow - startRow + 1;
 }
 
 function getOrCreateSheet_(spreadsheet, sheetName) {
