@@ -23,6 +23,22 @@ const AMAZON_ORDER_IMPORTER_CONFIG = {
 
 const COLOR_SUFFIX_PATTERN = /-(W|K|B|S|R|N|P|H|T|C)$/i;
 
+function getTargetSpreadsheet_() {
+  const properties = PropertiesService.getScriptProperties();
+  const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (activeSpreadsheet) {
+    properties.setProperty('TARGET_SPREADSHEET_ID', activeSpreadsheet.getId());
+    return activeSpreadsheet;
+  }
+
+  const spreadsheetId = properties.getProperty('TARGET_SPREADSHEET_ID')
+    || AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId;
+  if (!spreadsheetId) {
+    throw new Error('対象スプレッドシートを取得できません。スプレッドシートからApps Scriptを開いて初期設定を実行してください。');
+  }
+  return SpreadsheetApp.openById(spreadsheetId);
+}
+
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Amazon注文メール')
@@ -43,7 +59,7 @@ function onOpen() {
 }
 
 function setupAmazonOrderImporter() {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   spreadsheet.rename(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetTitle);
 
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
@@ -86,7 +102,7 @@ function setupAmazonOrderImporterAndTrigger() {
 }
 
 function sortAmazonResearchSheetAscending() {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   sortOrderSheet_(orderSheet);
 }
@@ -100,7 +116,7 @@ function repairRows2240To2440() {
 }
 
 function reprocessReviewRowsFromGmail() {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   const existingOrders = loadExistingOrders_(orderSheet);
@@ -149,13 +165,13 @@ function reprocessReviewRowsFromGmail() {
 }
 
 function refreshExistingOrderDetailsFromGmail() {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   repairOrderRows_(2, orderSheet.getLastRow());
 }
 
 function repairOrderRows_(startRow, endRow) {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const lastRow = orderSheet.getLastRow();
   if (lastRow < 2) {
@@ -216,7 +232,7 @@ function findOrderFieldsByOrderNumber_(orderNumber) {
 }
 
 function refreshExistingSalesAmountsFromGmail() {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const lastRow = orderSheet.getLastRow();
   if (lastRow < 2) {
@@ -293,7 +309,7 @@ function findSalesAmountByOrderNumber_(orderNumber) {
 function importAmazonOrderEmails() {
   setupAmazonOrderImporter();
 
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   const processedLabel = getOrCreateGmailLabel_(AMAZON_ORDER_IMPORTER_CONFIG.processedLabelName);

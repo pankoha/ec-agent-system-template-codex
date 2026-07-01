@@ -117,7 +117,7 @@ function setupResearchManagementSheet_(spreadsheet) {
 }
 
 function syncResearchManagementSheet() {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const appended = syncResearchManagementSheet_(spreadsheet);
   Logger.log(`リサーチ管理表同期: ${appended}行追加`);
   return appended;
@@ -183,7 +183,7 @@ function researchListedItemsHourly() {
 
   try {
     const startedAt = Date.now();
-    const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+    const spreadsheet = getTargetSpreadsheet_();
     syncResearchManagementSheet_(spreadsheet);
     const sheet = setupResearchManagementSheet_(spreadsheet);
     const lastRow = sheet.getLastRow();
@@ -516,7 +516,7 @@ function appendUrlToMainSheet_(rowNumber, columnNumber, resultLines) {
     return 0;
   }
 
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const sheet = setupResearchManagementSheet_(spreadsheet);
   const cell = sheet.getRange(rowNumber, columnNumber);
   const current = String(cell.getValue() || '');
@@ -705,7 +705,7 @@ function decodeResearchHtml_(value) {
 }
 
 function writeResearchCheck_(rowData, type, message, manualUrl) {
-  const spreadsheet = SpreadsheetApp.openById(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId);
+  const spreadsheet = getTargetSpreadsheet_();
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   const productName = rowData.productName || '';
   reviewSheet.appendRow([

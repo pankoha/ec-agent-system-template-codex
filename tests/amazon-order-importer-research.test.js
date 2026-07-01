@@ -25,12 +25,49 @@ const sandbox = {
   Logger: { log() {} },
   Utilities: {},
   Session: {},
+  PropertiesService: {
+    getScriptProperties() {
+      return {
+        getProperty(key) {
+          return sandbox.__properties[key] || null;
+        },
+        setProperty(key, value) {
+          sandbox.__properties[key] = String(value);
+        },
+      };
+    },
+  },
+  SpreadsheetApp: {
+    getActiveSpreadsheet() {
+      return sandbox.__activeSpreadsheet;
+    },
+    openById() {
+      throw new Error('openById must not be used while a bound spreadsheet is active');
+    },
+  },
+  __properties: {},
+  __activeSpreadsheet: {
+    getId() {
+      return 'current-bound-spreadsheet-id';
+    },
+  },
   setTimeout,
   clearTimeout,
 };
 vm.createContext(sandbox);
 vm.runInContext(codeSource, sandbox, { filename: 'Code.gs' });
 vm.runInContext(researchSource, sandbox, { filename: 'Research.gs' });
+
+assert.equal(
+  sandbox.getTargetSpreadsheet_(),
+  sandbox.__activeSpreadsheet,
+  'setup must use the spreadsheet that the bound Apps Script is currently attached to',
+);
+assert.equal(
+  sandbox.__properties.TARGET_SPREADSHEET_ID,
+  'current-bound-spreadsheet-id',
+  'setup must save the bound spreadsheet ID for later time-driven triggers',
+);
 
 sandbox.testKeywordGeneration();
 assert.deepEqual(
@@ -245,6 +282,9 @@ sandbox.__testSheet = {
   },
 };
 sandbox.SpreadsheetApp = {
+  getActiveSpreadsheet() {
+    return sandbox.__activeSpreadsheet;
+  },
   openById() {
     return {};
   },
