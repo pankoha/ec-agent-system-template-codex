@@ -12,6 +12,8 @@ All notable changes to this template will be documented in this file.
 - Amazon出品者向け通知の`新規の注文`文面をGmail自動取得対象に追加し、取り込みバッチ内の日付昇順追加を強化
 - `注文確定： SKU 商品名`形式の件名から商品名・SKUを補完し、本文に商品ラベルがない注文通知の取り込み漏れを防止
 - A列を`注文日`/`出荷予定日`の2行表示に戻し、新規追加行を注文日優先で昇順追加
+- Gmail自動取得で新規追加した注文をリサーチ管理表へ即時同期し、追加注文だけ同じ実行内でリサーチ開始
+- 後続リサーチでは既存候補より安い、または状態が良い候補だけを追記し、条件が悪い新規URLは追記しない
 - `lazyweb-design-research` skill: Lazyweb MCP / Chrome / Webを使ったLP・UI参考調査と実装前デザイン方向性整理
 - `sns-research` skill: 無料枠優先のSNS・YouTube公開データ調査、競合分析、投稿案・LP訴求抽出
 - `pox-analysis` skill: Points of X（POD/POP/POF）による自社 vs 競合1社の差別化・ポジショニング分析

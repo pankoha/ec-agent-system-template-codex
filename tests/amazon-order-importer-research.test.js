@@ -45,6 +45,16 @@ const sandbox = {
       throw new Error('openById must not be used while a bound spreadsheet is active');
     },
   },
+  LockService: {
+    getScriptLock() {
+      return {
+        tryLock() {
+          return true;
+        },
+        releaseLock() {},
+      };
+    },
+  },
   __properties: {},
   __activeSpreadsheet: {
     getId() {
@@ -470,6 +480,21 @@ assert.equal(
 assert.ok(cell.value.startsWith(existingLine), 'existing URLs and manual lines must remain untouched');
 assert.equal((cell.value.match(/m111/g) || []).length, 1, 'the same URL must not be appended twice');
 assert.equal((cell.value.match(/m222/g) || []).length, 1, 'the new URL must be appended once');
+assert.equal(
+  sandbox.appendResearchLinesToSheet_(
+    sandbox.__testSheet,
+    2,
+    8,
+    [
+      '8,500円｜中古｜https://jp.mercari.com/item/m333',
+      '9,500円｜未使用に近い｜https://jp.mercari.com/item/m444',
+    ],
+  ),
+  1,
+  'only cheaper or better-condition candidates should be appended after an existing candidate',
+);
+assert.equal((cell.value.match(/m333/g) || []).length, 0, 'worse candidates must not be appended');
+assert.equal((cell.value.match(/m444/g) || []).length, 1, 'better-condition candidates must be appended');
 
 function makeSheet(headers, rows, hidden = false) {
   const grid = [headers.slice(), ...rows.map((row) => row.slice())];
@@ -805,6 +830,52 @@ assert.equal(
   sandbox.extractOrderNumberFromOrderInfo(`注文番号：${orderOne}\n商品名：商品1`),
   orderOne,
   'the shared order-number parser must read B-column order information',
+);
+
+const importedOrder = '777-7777777-7777777';
+const importedMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト'],
+  [
+    ['注文日：2026/07/01\n出荷予定日：2026/07/09', `注文番号：${importedOrder}\n商品名：自動取得商品\nSKU：sku777`, 9800, 'AUTO-777', '', '', '', '', '', ''],
+  ],
+);
+const importedManagementSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト', '最終リサーチ日時', '確認メモ'],
+  [],
+);
+const importedReviewRows = [];
+const importedSpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: importedMainSheet,
+  リサーチ管理表: importedManagementSheet,
+  確認用: { appendRow: (row) => importedReviewRows.push(row) },
+});
+const originalResearchOneOrder = sandbox.researchOneOrder;
+sandbox.researchOneOrder = (rowData) => {
+  assert.equal(rowData.orderNumber, importedOrder, 'only the newly imported order should be researched immediately');
+  rowData.sheet.getRange(rowData.row, rowData.columns.Mercari).setValue('7,000円｜中古｜https://jp.mercari.com/item/imported777');
+  return {
+    added: 1,
+    needsReview: false,
+    resultsBySite: {
+      Mercari: ['7,000円｜中古｜https://jp.mercari.com/item/imported777'],
+    },
+    memos: [],
+  };
+};
+const immediateResearchResult = sandbox.researchImportedOrderRowsAfterImport_(importedSpreadsheet, [importedOrder]);
+sandbox.researchOneOrder = originalResearchOneOrder;
+assert.deepEqual(
+  JSON.parse(JSON.stringify(immediateResearchResult)),
+  { synced: 1, processed: 1, added: 1, errors: 0, skipped: 0 },
+  'new Gmail imports must sync to management and start research immediately',
+);
+assert.equal(importedManagementSheet.getLastRow(), 2, 'the imported order must be appended to the management sheet');
+assert.equal(importedMainSheet.grid[1][4], '候補あり', 'the imported main row status must be updated by immediate research');
+assert.match(importedManagementSheet.grid[1][7], /imported777/, 'immediate research results must sync to management');
+assert.equal(
+  Object.prototype.toString.call(importedManagementSheet.grid[1][10]),
+  '[object Date]',
+  'immediate research must update the management last-researched timestamp',
 );
 
 assert.match(researchSource, /候補あり・候補なし等の状態にかかわらず|regardless of status/);

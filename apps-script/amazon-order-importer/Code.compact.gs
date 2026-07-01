@@ -382,6 +382,7 @@ function importAmazonOrderEmails() {
   recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, 'Gmail取込前の削除検知');
   const existingOrders = loadExistingOrders_(orderSheet);
   const rowsToAppend = [];
+  const importedOrderNumbers = [];
   const reviewRows = [];
 
   const query = buildAmazonOrderGmailQuery_();
@@ -417,6 +418,7 @@ function importAmazonOrderEmails() {
 
       existingOrders.orderNumbers.add(result.fields.orderNumber);
       rowsToAppend.push(buildOrderRow_(result.fields));
+      importedOrderNumbers.push(result.fields.orderNumber);
       shouldMarkProcessed = true;
     });
 
@@ -438,6 +440,9 @@ function importAmazonOrderEmails() {
     reviewSheet.getRange(startRow, 1, reviewRows.length, 12).setWrap(true);
   }
   updateKnownOrderSnapshot_(orderSheet);
+  if (importedOrderNumbers.length > 0 && typeof researchImportedOrderRowsAfterImport_ === 'function') {
+    researchImportedOrderRowsAfterImport_(spreadsheet, importedOrderNumbers);
+  }
 
   Logger.log(`追加: ${rowsToAppend.length}件 / 確認用: ${reviewRows.length}件`);
 }
@@ -1737,6 +1742,125 @@ function syncResearchManagementOnChange(event) {
   }
 }
 
+function researchImportedOrderRowsAfterImport_(spreadsheet, orderNumbers) {
+  const uniqueOrderNumbers = Array.from(new Set((orderNumbers || []).filter(Boolean)));
+  if (!uniqueOrderNumbers.length) {
+    return { synced: 0, processed: 0, added: 0, errors: 0, skipped: 0 };
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) {
+    Logger.log('別のリサーチ処理が実行中のため、Gmail自動取得直後リサーチを保留しました。');
+    return { synced: 0, processed: 0, added: 0, errors: 0, skipped: uniqueOrderNumbers.length };
+  }
+
+  try {
+    return researchImportedOrderRowsAfterImportCore_(spreadsheet, uniqueOrderNumbers);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function researchImportedOrderRowsAfterImportCore_(spreadsheet, orderNumbers) {
+  const uniqueOrderNumbers = Array.from(new Set((orderNumbers || []).filter(Boolean)));
+  if (!uniqueOrderNumbers.length) {
+    return { synced: 0, processed: 0, added: 0, errors: 0, skipped: 0 };
+  }
+
+  const syncResult = syncResearchManagementByOrderNumber_(spreadsheet);
+  if (!syncResult.available) {
+    return { synced: 0, processed: 0, added: 0, errors: 0, skipped: uniqueOrderNumbers.length };
+  }
+
+  const managementContext = buildResearchManagementContext_(spreadsheet);
+  const sheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return { synced: syncResult.appended, processed: 0, added: 0, errors: 0, skipped: uniqueOrderNumbers.length };
+  }
+
+  const columns = researchColumnMap_(sheet);
+  const values = sheet.getRange(2, 1, lastRow - 1, Math.max(1, sheet.getLastColumn())).getValues();
+  const rowsByOrderNumber = new Map();
+  values.forEach((row, index) => {
+    const orderNumber = orderNumberFromRow_(row, columns);
+    if (!orderNumber || uniqueOrderNumbers.indexOf(orderNumber) < 0) {
+      return;
+    }
+    if (!rowsByOrderNumber.has(orderNumber)) {
+      rowsByOrderNumber.set(orderNumber, []);
+    }
+    rowsByOrderNumber.get(orderNumber).push({ rowNumber: index + 2, values: row });
+  });
+
+  let processed = 0;
+  let added = 0;
+  let errors = 0;
+  let skipped = 0;
+  uniqueOrderNumbers.forEach((orderNumber) => {
+    const matches = rowsByOrderNumber.get(orderNumber) || [];
+    if (matches.length !== 1) {
+      skipped += 1;
+      if (matches.length > 1) {
+        writeSynchronizationCheck_(spreadsheet, '注文番号重複', orderNumber, 'Gmail自動取得直後リサーチは、同じ注文番号の行が複数あるため保留しました。');
+      }
+      return;
+    }
+
+    const target = matches[0];
+    if (!isResearchRowVisibleForAutomation_(sheet, target.rowNumber)) {
+      skipped += 1;
+      writeSynchronizationCheck_(spreadsheet, '要確認', orderNumber, 'Gmail自動取得直後リサーチは、対象行が非表示のため保留しました。');
+      return;
+    }
+
+    const rowData = buildResearchRowDataFromSheet_(target.rowNumber, target.values, columns, sheet);
+    if (!rowData.keywordLines.length || !rowData.maxPrice) {
+      setManagedResearchStatusAtColumn_(sheet, target.rowNumber, columns.status, RESEARCH_STATUS.review);
+      writeResearchCheck_(rowData, '入力不足', 'C列の売上金またはD列の検索ワードがありません。', '');
+      syncMainAndResearchManagementAfterResearch(rowData.orderNumber, target.rowNumber, {
+        status: RESEARCH_STATUS.review,
+        resultsBySite: {},
+        memos: ['C列の売上金またはD列の検索ワードがありません。'],
+      }, managementContext);
+      processed += 1;
+      return;
+    }
+
+    setManagedResearchStatusAtColumn_(sheet, target.rowNumber, columns.status, RESEARCH_STATUS.running);
+    try {
+      const result = researchOneOrder(rowData);
+      added += result.added;
+      const hasCandidates = rowHasResearchCandidates_(sheet, target.rowNumber, columns)
+        || researchManagementHasCandidates_(rowData.orderNumber, managementContext)
+        || Object.keys(result.resultsBySite || {}).some((key) => (result.resultsBySite[key] || []).length);
+      result.status = hasCandidates ? RESEARCH_STATUS.found : (result.needsReview ? RESEARCH_STATUS.review : RESEARCH_STATUS.empty);
+      setManagedResearchStatusAtColumn_(sheet, target.rowNumber, columns.status, result.status);
+      syncMainAndResearchManagementAfterResearch(rowData.orderNumber, target.rowNumber, result, managementContext);
+    } catch (error) {
+      errors += 1;
+      const message = String(error && error.message ? error.message : error);
+      setManagedResearchStatusAtColumn_(sheet, target.rowNumber, columns.status, RESEARCH_STATUS.error);
+      writeResearchCheck_(rowData, 'エラー', message, '');
+      syncMainAndResearchManagementAfterResearch(rowData.orderNumber, target.rowNumber, {
+        status: RESEARCH_STATUS.error,
+        resultsBySite: {},
+        memos: [message],
+      }, managementContext);
+    }
+    processed += 1;
+  });
+
+  Logger.log(`Gmail自動取得直後リサーチ完了: 同期追加 ${syncResult.appended} / 今回処理 ${processed} / 新規URL ${added} / エラー ${errors} / 保留 ${skipped}`);
+  return { synced: syncResult.appended, processed, added, errors, skipped };
+}
+
+function isResearchRowVisibleForAutomation_(sheet, rowNumber) {
+  const hiddenByUser = typeof sheet.isRowHiddenByUser === 'function' && sheet.isRowHiddenByUser(rowNumber);
+  const hiddenByFilter = typeof sheet.isRowHiddenByFilter === 'function' && sheet.isRowHiddenByFilter(rowNumber);
+  return !hiddenByUser && !hiddenByFilter;
+}
+
 function researchListedItemsHourly() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) {
@@ -2183,15 +2307,25 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
   const cell = sheet.getRange(rowNumber, columnNumber);
   const current = String(cell.getValue() || '');
   const currentUrls = new Set(extractUrls_(current).map(canonicalResearchUrl_).filter(Boolean));
+  const currentComparableResults = current
+    .split('\n')
+    .map(parseResearchLineForComparison_)
+    .filter((result) => result.url || result.price || result.conditionRank);
   const additions = [];
 
   lines.forEach((line) => {
-    const url = canonicalResearchUrl_((String(line).match(/https?:\/\/\S+/) || [''])[0]);
+    const normalizedLine = String(line);
+    const url = canonicalResearchUrl_((normalizedLine.match(/https?:\/\/\S+/) || [''])[0]);
     if (!url || currentUrls.has(url)) {
       return;
     }
+    const nextComparable = parseResearchLineForComparison_(normalizedLine);
+    if (!isBetterResearchCandidate_(nextComparable, currentComparableResults)) {
+      return;
+    }
     currentUrls.add(url);
-    additions.push(String(line).replace(/https?:\/\/\S+/, url));
+    currentComparableResults.push(nextComparable);
+    additions.push(normalizedLine.replace(/https?:\/\/\S+/, url));
   });
 
   if (additions.length) {
@@ -2221,6 +2355,61 @@ function isDuplicateUrlInCell(cellValue, url) {
 
 function extractUrls_(text) {
   return String(text || '').match(/https?:\/\/\S+/g) || [];
+}
+
+function parseResearchLineForComparison_(line) {
+  const text = String(line || '');
+  const priceParts = text.match(/([0-9０-９,，]+)\s*円/g) || [];
+  const prices = priceParts
+    .map((part) => Number(toHalfWidthNumber_(part).replace(/[^\d]/g, '')))
+    .filter((price) => price > 0);
+  const shippingKnown = /送料要確認/.test(text) ? false : prices.length > 1 || /送料無料/.test(text);
+  const price = prices.length
+    ? prices[0] + (shippingKnown && prices.length > 1 ? prices[1] : 0)
+    : 0;
+  return {
+    url: canonicalResearchUrl_((text.match(/https?:\/\/\S+/) || [''])[0]),
+    price,
+    conditionRank: researchConditionRank_(text),
+  };
+}
+
+function researchConditionRank_(text) {
+  const value = String(text || '');
+  if (/ほぼ新品|未使用に近い/i.test(value)) {
+    return 90;
+  }
+  if (/新品|未使用品|未使用|brand\s*new|new\b/i.test(value)) {
+    return 100;
+  }
+  if (/非常に良い|目立った傷や汚れなし/i.test(value)) {
+    return 80;
+  }
+  if (/良い|やや傷や汚れあり/i.test(value)) {
+    return 60;
+  }
+  if (/可|傷や汚れあり/i.test(value)) {
+    return 40;
+  }
+  if (/中古|使用済|used/i.test(value)) {
+    return 30;
+  }
+  if (/状態要確認|送料要確認/.test(value)) {
+    return 20;
+  }
+  return 0;
+}
+
+function isBetterResearchCandidate_(candidate, existingResults) {
+  const existing = (existingResults || []).filter((result) => result.price || result.conditionRank);
+  if (!existing.length) {
+    return true;
+  }
+  const bestPrice = Math.min(...existing.map((result) => result.price).filter((price) => price > 0));
+  const bestConditionRank = Math.max(...existing.map((result) => result.conditionRank || 0));
+  const cheaper = candidate.price > 0 && Number.isFinite(bestPrice) && candidate.price < bestPrice;
+  const betterCondition = (candidate.conditionRank || 0) > bestConditionRank;
+  return cheaper || betterCondition;
 }
 
 function formatResearchResult_(item, includeSiteName) {

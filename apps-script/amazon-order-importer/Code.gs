@@ -382,6 +382,7 @@ function importAmazonOrderEmails() {
   recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, 'Gmail取込前の削除検知');
   const existingOrders = loadExistingOrders_(orderSheet);
   const rowsToAppend = [];
+  const importedOrderNumbers = [];
   const reviewRows = [];
 
   const query = buildAmazonOrderGmailQuery_();
@@ -417,6 +418,7 @@ function importAmazonOrderEmails() {
 
       existingOrders.orderNumbers.add(result.fields.orderNumber);
       rowsToAppend.push(buildOrderRow_(result.fields));
+      importedOrderNumbers.push(result.fields.orderNumber);
       shouldMarkProcessed = true;
     });
 
@@ -438,6 +440,9 @@ function importAmazonOrderEmails() {
     reviewSheet.getRange(startRow, 1, reviewRows.length, 12).setWrap(true);
   }
   updateKnownOrderSnapshot_(orderSheet);
+  if (importedOrderNumbers.length > 0 && typeof researchImportedOrderRowsAfterImport_ === 'function') {
+    researchImportedOrderRowsAfterImport_(spreadsheet, importedOrderNumbers);
+  }
 
   Logger.log(`追加: ${rowsToAppend.length}件 / 確認用: ${reviewRows.length}件`);
 }
