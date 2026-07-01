@@ -1187,6 +1187,8 @@ const RESEARCH_AUTOMATION_CONFIG = {
   userAgent: 'Mozilla/5.0 (compatible; GoogleAppsScript sourcing-research/1.0)',
 };
 
+const LEGACY_RESEARCH_MANAGEMENT_SHEET_NAMES = ['リサーチ管理シート'];
+
 const RESEARCH_HEADERS = [
   '注文日 / 出荷予定日',
   '注文情報',
@@ -1303,6 +1305,7 @@ const OTHER_RESEARCH_SITES = [
 ];
 
 function setupResearchManagementSheet_(spreadsheet) {
+  deleteUnusedLegacyResearchManagementSheets_(spreadsheet);
   const sheet = getOrCreateSheet_(spreadsheet, RESEARCH_AUTOMATION_CONFIG.sheetName);
   if (isSheetBlank_(sheet)) {
     ensureHeader_(sheet, RESEARCH_HEADERS);
@@ -1318,6 +1321,18 @@ function setupResearchManagementSheet_(spreadsheet) {
     sheet.setColumnWidth(12, 320);
   }
   return sheet;
+}
+
+function deleteUnusedLegacyResearchManagementSheets_(spreadsheet) {
+  LEGACY_RESEARCH_MANAGEMENT_SHEET_NAMES.forEach((sheetName) => {
+    if (sheetName === RESEARCH_AUTOMATION_CONFIG.sheetName) {
+      return;
+    }
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (sheet && typeof spreadsheet.deleteSheet === 'function') {
+      spreadsheet.deleteSheet(sheet);
+    }
+  });
 }
 
 function syncResearchManagementSheet() {
@@ -2038,13 +2053,33 @@ function buildResearchRowDataFromSheet_(rowNumber, values, columns, sheet) {
 }
 
 function rowHasResearchCandidates_(sheet, rowNumber, columns) {
-  return ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Other'].some((key) => {
+  return RESEARCH_RESULT_KEYS.some((key) => {
     const columnNumber = columns[key];
     return columnNumber && String(sheet.getRange(rowNumber, columnNumber).getDisplayValue() || '').trim();
   });
 }
 
+function isResearchManagementSheet_(sheet) {
+  return !sheet
+    || typeof sheet.getName !== 'function'
+    || sheet.getName() === RESEARCH_AUTOMATION_CONFIG.sheetName;
+}
+
 function researchOneOrder(rowData) {
+  if (!isResearchManagementSheet_(rowData.sheet)) {
+    writeResearchCheck_(
+      rowData,
+      '書き込み先不一致',
+      `候補URLの追記先は${RESEARCH_AUTOMATION_CONFIG.sheetName}のみに限定しています。`,
+      '',
+    );
+    return {
+      added: 0,
+      needsReview: true,
+      resultsBySite: {},
+      memos: ['候補URLの追記先がリサーチ管理表ではないため追記を停止しました。'],
+    };
+  }
   let added = 0;
   let needsReview = false;
   const seenThisRun = new Set();
@@ -2350,9 +2385,8 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
 }
 
 function appendUrlToMainSheet_(rowNumber, columnNumber, resultLines) {
-  const spreadsheet = getTargetSpreadsheet_();
-  const sheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
-  return appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines);
+  Logger.log(`候補URLの追記先は${RESEARCH_AUTOMATION_CONFIG.sheetName}のみに限定しているため、メインシートへの追記はスキップしました。`);
+  return 0;
 }
 
 function appendUrlToMainSheet(rowNumber, columnNumber, resultText) {

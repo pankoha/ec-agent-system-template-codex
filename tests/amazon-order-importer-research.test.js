@@ -500,6 +500,10 @@ function makeSheet(headers, rows, hidden = false) {
   const grid = [headers.slice(), ...rows.map((row) => row.slice())];
   return {
     grid,
+    name: '',
+    getName() {
+      return this.name;
+    },
     getLastRow() {
       return this.grid.length;
     },
@@ -581,16 +585,54 @@ function makeSpreadsheet(sheets) {
     },
     insertSheet(name) {
       const sheet = makeSheet([''], []);
+      sheet.name = name;
       sheet.parent = spreadsheet;
       sheets[name] = sheet;
       return sheet;
     },
+    deleteSheet(sheetToDelete) {
+      const sheetName = Object.keys(sheets).find((name) => sheets[name] === sheetToDelete);
+      if (sheetName) {
+        delete sheets[sheetName];
+      }
+    },
   };
-  Object.values(sheets).forEach((sheet) => {
+  Object.entries(sheets).forEach(([name, sheet]) => {
+    sheet.name = name;
     sheet.parent = spreadsheet;
   });
   return spreadsheet;
 }
+
+const legacyManagementSheet = makeSheet(['旧'], [['不要']]);
+const activeManagementSheet = makeSheet(['既存'], []);
+const legacySheetMap = {
+  リサーチ管理シート: legacyManagementSheet,
+  リサーチ管理表: activeManagementSheet,
+};
+const legacySpreadsheet = makeSpreadsheet(legacySheetMap);
+sandbox.setupResearchManagementSheet_(legacySpreadsheet);
+assert.equal(
+  legacySpreadsheet.getSheetByName('リサーチ管理シート'),
+  null,
+  'unused legacy リサーチ管理シート must be deleted during setup',
+);
+assert.ok(
+  legacySpreadsheet.getSheetByName('リサーチ管理表'),
+  'active リサーチ管理表 must remain available',
+);
+
+const mainAppendSheet = makeSheet(['A', 'B', 'C', 'D', 'E', 'F'], [['', '', '', '', '', '']]);
+assert.equal(
+  sandbox.appendUrlToMainSheet_(2, 6, ['1,000円｜中古｜https://example.com/main-only']),
+  0,
+  'research URL appends must not write to the main order sheet',
+);
+assert.equal(
+  mainAppendSheet.grid[1][5],
+  '',
+  'main order sheet cells must remain unchanged by research URL append API',
+);
 
 const deletedProtectedOrder = '444-4444444-4444444';
 const keptProtectedOrder = '555-5555555-5555555';
