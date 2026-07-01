@@ -69,6 +69,65 @@ assert.equal(
   'setup must save the bound spreadsheet ID for later time-driven triggers',
 );
 
+const hiddenRanges = [];
+const dateVisibilitySheet = {
+  getLastRow() {
+    return 5;
+  },
+  getRange() {
+    return {
+      getDisplayValues() {
+        return [['2026/06/28'], ['出荷予定日：2026/06/29'], ['2026/06/30'], ['2026/07/01']];
+      },
+    };
+  },
+  hideRows(startRow, rowCount) {
+    hiddenRanges.push([startRow, rowCount]);
+  },
+  showRows() {
+    throw new Error('manually hidden rows must never be shown automatically');
+  },
+};
+sandbox.hideRowsBeforeDisplayDate_(dateVisibilitySheet);
+assert.deepEqual(
+  hiddenRanges,
+  [[2, 2]],
+  'both sheets must hide only rows before 2026/06/30',
+);
+
+const protectedHeaderSheet = {
+  getRange() {
+    return {
+      getValues() {
+        return [['手入力ヘッダー', '', '', '']];
+      },
+      setValues() {
+        throw new Error('existing headers must not be overwritten');
+      },
+      setFontWeight() {
+        throw new Error('existing formatting must not be changed');
+      },
+      setBackground() {
+        throw new Error('user colors must not be changed');
+      },
+    };
+  },
+};
+sandbox.ensureHeader_(protectedHeaderSheet, ['A', 'B', 'C', 'D']);
+
+const manualStatusCell = {
+  value: '担当者確認中',
+  getValue() {
+    return this.value;
+  },
+  setValue(value) {
+    this.value = value;
+    return this;
+  },
+};
+sandbox.setManagedResearchStatus_({ getRange: () => manualStatusCell }, 2, 'リサーチ中');
+assert.equal(manualStatusCell.value, '担当者確認中', 'manual status input must be preserved');
+
 sandbox.testKeywordGeneration();
 assert.deepEqual(
   Array.from(sandbox.buildOrderRow_({
@@ -312,6 +371,11 @@ assert.doesNotMatch(
   researchSource,
   /remove(?:Stale|Auto|Unavailable).*Url|clearContent\(\).*URL/i,
   'research implementation must not contain URL-removal behavior',
+);
+assert.doesNotMatch(
+  `${codeSource}\n${researchSource}`,
+  /\.showRows\(|\.showColumns\(|\.insertColumn/i,
+  'manually hidden rows and deleted columns must never be restored automatically',
 );
 
 console.log('amazon-order-importer research tests: PASS');

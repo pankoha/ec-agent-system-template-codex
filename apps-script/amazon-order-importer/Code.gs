@@ -19,6 +19,7 @@ const AMAZON_ORDER_IMPORTER_CONFIG = {
   subjectKeyword: '注文確定',
   threadLimitPerRun: 50,
   minShipDate: '2026/06/01',
+  displayFromDate: '2026/06/30',
 };
 
 const COLOR_SUFFIX_PATTERN = /-(W|K|B|S|R|N|P|H|T|C)$/i;
@@ -63,34 +64,38 @@ function setupAmazonOrderImporter() {
   spreadsheet.rename(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetTitle);
 
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
-  migrateOrderSheetToFourColumns_(orderSheet);
-  ensureHeader_(orderSheet, ['出荷期限日', '注文情報', '売上金', '検索ワード']);
-  orderSheet.setFrozenRows(1);
-  orderSheet.getRange('A:D').setWrap(true);
-  orderSheet.setColumnWidths(1, 1, 120);
-  orderSheet.setColumnWidths(2, 1, 520);
-  orderSheet.setColumnWidths(3, 1, 110);
-  orderSheet.setColumnWidths(4, 1, 260);
+  if (isSheetBlank_(orderSheet)) {
+    ensureHeader_(orderSheet, ['出荷期限日', '注文情報', '売上金', '検索ワード']);
+    orderSheet.setFrozenRows(1);
+    orderSheet.getRange('A:D').setWrap(true);
+    orderSheet.setColumnWidths(1, 1, 120);
+    orderSheet.setColumnWidths(2, 1, 520);
+    orderSheet.setColumnWidths(3, 1, 110);
+    orderSheet.setColumnWidths(4, 1, 260);
+  }
+  hideRowsBeforeDisplayDate_(orderSheet);
 
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
-  ensureHeader_(reviewSheet, [
-    '処理日時',
-    'メール受信日時',
-    'メール件名',
-    '取得できた情報',
-    '取得できなかった情報',
-    'エラー内容',
-    '種別',
-    '注文番号',
-    '商品名',
-    '検索ワード',
-    '手動確認用URL',
-    'メモ',
-  ]);
-  reviewSheet.setFrozenRows(1);
-  reviewSheet.getRange('A:L').setWrap(true);
-  reviewSheet.setColumnWidths(1, 3, 160);
-  reviewSheet.setColumnWidths(4, 9, 260);
+  if (isSheetBlank_(reviewSheet)) {
+    ensureHeader_(reviewSheet, [
+      '処理日時',
+      'メール受信日時',
+      'メール件名',
+      '取得できた情報',
+      '取得できなかった情報',
+      'エラー内容',
+      '種別',
+      '注文番号',
+      '商品名',
+      '検索ワード',
+      '手動確認用URL',
+      'メモ',
+    ]);
+    reviewSheet.setFrozenRows(1);
+    reviewSheet.getRange('A:L').setWrap(true);
+    reviewSheet.setColumnWidths(1, 3, 160);
+    reviewSheet.setColumnWidths(4, 9, 260);
+  }
 
   setupResearchManagementSheet_(spreadsheet);
 }
@@ -158,7 +163,7 @@ function reprocessReviewRowsFromGmail() {
     const startRow = orderSheet.getLastRow() + 1;
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
-    sortOrderSheet_(orderSheet);
+    hideRowsBeforeDisplayDate_(orderSheet);
   }
 
   Logger.log(`確認用再処理: ${rowsToAppend.length}件 / Gmail検出: ${foundOrderCount}注文 / 重複: ${skippedOrderCount}件 / 確認: ${checkedOrderCount}注文`);
@@ -362,7 +367,7 @@ function importAmazonOrderEmails() {
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
   }
 
-  sortOrderSheet_(orderSheet);
+  hideRowsBeforeDisplayDate_(orderSheet);
 
   if (reviewRows.length > 0) {
     const startRow = reviewSheet.getLastRow() + 1;
@@ -686,26 +691,24 @@ function sortOrderSheet_(sheet) {
     return;
   }
 
-  sheet.getRange(2, 1, lastRow - 1, 4).sort({ column: 1, ascending: true });
-  showRowsFromMinShipDate_(sheet);
+  sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).sort({ column: 1, ascending: true });
+  hideRowsBeforeDisplayDate_(sheet);
 }
 
-function showRowsFromMinShipDate_(sheet) {
+function hideRowsBeforeDisplayDate_(sheet) {
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
     return;
   }
 
-  sheet.showRows(2, lastRow - 1);
-  const minDate = new Date(`${AMAZON_ORDER_IMPORTER_CONFIG.minShipDate} 00:00:00`);
+  const displayFrom = Number(AMAZON_ORDER_IMPORTER_CONFIG.displayFromDate.replace(/[^\d]/g, ''));
   const values = sheet.getRange(2, 1, lastRow - 1, 1).getDisplayValues().flat();
   let startRow = 0;
   let rowsToHide = 0;
 
   for (let index = 0; index < values.length; index += 1) {
-    const value = values[index];
-    const rowDate = new Date(`${String(value).replace(/\//g, '-')} 00:00:00`);
-    const shouldHide = value && rowDate < minDate;
+    const rowDate = displayShipDateNumber_(values[index]);
+    const shouldHide = rowDate > 0 && rowDate < displayFrom;
 
     if (shouldHide) {
       if (!startRow) {
@@ -722,6 +725,14 @@ function showRowsFromMinShipDate_(sheet) {
   if (startRow) {
     sheet.hideRows(startRow, rowsToHide);
   }
+}
+
+function displayShipDateNumber_(value) {
+  const text = String(value || '');
+  const labeled = text.match(/出荷(?:期限|予定)日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
+  const fallback = text.match(/([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
+  const normalized = normalizeDate_((labeled && labeled[1]) || (fallback && fallback[1]) || '');
+  return Number(String(normalized || '').replace(/[^\d]/g, '')) || 0;
 }
 
 function buildReviewRow_(message, fields, missing, error) {
@@ -741,27 +752,6 @@ function buildReviewRow_(message, fields, missing, error) {
   ];
 }
 
-function migrateOrderSheetToFourColumns_(sheet) {
-  if (sheet.getLastColumn() < 3) {
-    return;
-  }
-  const headers = sheet.getRange(1, 1, 1, Math.max(4, sheet.getLastColumn())).getValues()[0];
-  if (headers[2] !== '検索ワード' || headers[3] === '検索ワード') {
-    return;
-  }
-  const lastRow = sheet.getLastRow();
-  if (lastRow >= 2) {
-    const legacyRows = sheet.getRange(2, 2, lastRow - 1, 2).getValues();
-    const salesAmounts = legacyRows.map((row) => {
-      const match = String(row[0] || '').match(/売\s*上\s*金\s*[:：]\s*([^\n]+)/);
-      return [match ? salesAmountNumber_(match[1]) || '' : ''];
-    });
-    const searchWords = legacyRows.map((row) => [row[1]]);
-    sheet.getRange(2, 3, lastRow - 1, 1).setValues(salesAmounts).setNumberFormat('#,##0');
-    sheet.getRange(2, 4, lastRow - 1, 1).setValues(searchWords);
-  }
-}
-
 function isTargetMessage_(message) {
   return message.getFrom().toLowerCase().indexOf(AMAZON_ORDER_IMPORTER_CONFIG.sender) !== -1
     && message.getSubject().indexOf(AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword) !== -1;
@@ -771,10 +761,14 @@ function getOrCreateSheet_(spreadsheet, sheetName) {
   return spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
 }
 
+function isSheetBlank_(sheet) {
+  return sheet.getLastRow() === 0
+    || (sheet.getLastRow() === 1 && sheet.getLastColumn() === 1 && sheet.getRange(1, 1).getValue() === '');
+}
+
 function ensureHeader_(sheet, headers) {
   const current = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-  const needsHeader = headers.some((header, index) => current[index] !== header);
-  if (!needsHeader) {
+  if (current.some((value) => String(value || '').trim())) {
     return;
   }
 

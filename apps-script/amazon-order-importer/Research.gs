@@ -104,15 +104,18 @@ const OTHER_RESEARCH_SITES = [
 
 function setupResearchManagementSheet_(spreadsheet) {
   const sheet = getOrCreateSheet_(spreadsheet, RESEARCH_AUTOMATION_CONFIG.sheetName);
-  ensureHeader_(sheet, RESEARCH_HEADERS);
-  sheet.setFrozenRows(1);
-  sheet.getRange('A:J').setWrap(true);
-  sheet.setColumnWidth(1, 120);
-  sheet.setColumnWidth(2, 440);
-  sheet.setColumnWidth(3, 110);
-  sheet.setColumnWidth(4, 260);
-  sheet.setColumnWidth(5, 120);
-  sheet.setColumnWidths(6, 5, 230);
+  if (isSheetBlank_(sheet)) {
+    ensureHeader_(sheet, RESEARCH_HEADERS);
+    sheet.setFrozenRows(1);
+    sheet.getRange('A:J').setWrap(true);
+    sheet.setColumnWidth(1, 120);
+    sheet.setColumnWidth(2, 440);
+    sheet.setColumnWidth(3, 110);
+    sheet.setColumnWidth(4, 260);
+    sheet.setColumnWidth(5, 120);
+    sheet.setColumnWidths(6, 5, 230);
+  }
+  hideRowsBeforeDisplayDate_(sheet);
   return sheet;
 }
 
@@ -157,6 +160,7 @@ function syncResearchManagementSheet_(spreadsheet) {
   if (additions.length) {
     researchSheet.getRange(researchSheet.getLastRow() + 1, 1, additions.length, 10).setValues(additions).setWrap(true);
   }
+  hideRowsBeforeDisplayDate_(researchSheet);
   return additions.length;
 }
 
@@ -208,23 +212,25 @@ function researchListedItemsHourly() {
       const values = sheet.getRange(rowNumber, 1, 1, 10).getValues()[0];
       const rowData = buildResearchRowData_(rowNumber, values);
       if (!rowData.keywordLines.length || !rowData.maxPrice) {
-        sheet.getRange(rowNumber, 5).setValue(RESEARCH_STATUS.review);
+        setManagedResearchStatus_(sheet, rowNumber, RESEARCH_STATUS.review);
         writeResearchCheck_(rowData, '入力不足', 'C列の売上金またはD列の検索ワードがありません。', '');
         processed += 1;
         continue;
       }
 
-      sheet.getRange(rowNumber, 5).setValue(RESEARCH_STATUS.running);
+      setManagedResearchStatus_(sheet, rowNumber, RESEARCH_STATUS.running);
       try {
         const result = researchOneOrder(rowData);
         added += result.added;
         const hasCandidates = sheet.getRange(rowNumber, 6, 1, 5).getDisplayValues()[0].some((value) => String(value || '').trim());
-        sheet.getRange(rowNumber, 5).setValue(
+        setManagedResearchStatus_(
+          sheet,
+          rowNumber,
           hasCandidates ? RESEARCH_STATUS.found : (result.needsReview ? RESEARCH_STATUS.review : RESEARCH_STATUS.empty),
         );
       } catch (error) {
         errors += 1;
-        sheet.getRange(rowNumber, 5).setValue(RESEARCH_STATUS.error);
+        setManagedResearchStatus_(sheet, rowNumber, RESEARCH_STATUS.error);
         writeResearchCheck_(rowData, 'エラー', String(error && error.message ? error.message : error), '');
       }
       processed += 1;
@@ -236,6 +242,15 @@ function researchListedItemsHourly() {
     Logger.log(`継続リサーチ完了: 表示行 ${visibleRows.length} / 今回処理 ${processed} / 新規URL ${added} / エラー ${errors}`);
   } finally {
     lock.releaseLock();
+  }
+}
+
+function setManagedResearchStatus_(sheet, rowNumber, nextStatus) {
+  const cell = sheet.getRange(rowNumber, 5);
+  const current = String(cell.getValue() || '').trim();
+  const managedStatuses = Object.keys(RESEARCH_STATUS).map((key) => RESEARCH_STATUS[key]);
+  if (!current || managedStatuses.indexOf(current) >= 0) {
+    cell.setValue(nextStatus);
   }
 }
 
