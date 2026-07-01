@@ -106,6 +106,44 @@ assert.equal(
   true,
   'Gmail import must stay bounded to recent Amazon seller notifications',
 );
+assert.equal(
+  sandbox.buildAmazonOrderGmailQuery_().includes('"新規の注文"'),
+  true,
+  'Gmail import must search the newer Amazon seller notification wording',
+);
+const newOrderNoticeMessage = {
+  getFrom: () => 'seller-notification@amazon.co.jp',
+  getSubject: () => '出品者向け通知',
+  getPlainBody: () => [
+    'Amazonで新規の注文がありました。 出荷予定日2026/07/09までに商品の出荷を完了してください。',
+    '注文の詳細',
+    '注文番号：249-8883596-5682228',
+    '注文日：2026/07/01',
+    '商品名：Panasonic DMR-2W101-K',
+    'SKU：sku-249',
+    '売上金：12,800円',
+  ].join('\n'),
+  getBody: () => '',
+};
+assert.equal(
+  sandbox.isTargetMessage_(newOrderNoticeMessage),
+  true,
+  'seller notifications whose body says 新規の注文 and includes an order number must be imported',
+);
+const newOrderNoticeResult = sandbox.parseAmazonOrderEmail_(sandbox.getMessageText_(newOrderNoticeMessage));
+assert.equal(newOrderNoticeResult.ok, true, 'new-order seller notification wording must parse');
+assert.equal(newOrderNoticeResult.fields.orderNumber, '249-8883596-5682228');
+assert.equal(newOrderNoticeResult.fields.shipDate, '2026/07/09');
+const unsortedRows = [
+  ['2026/07/09', '注文番号：249-8883596-5682228', 12800, 'DMR-2W101'],
+  ['2026/07/02', '注文番号：111-1111111-1111111', 10000, 'ABC-1'],
+];
+sandbox.sortOrderRowsForAppend_(unsortedRows);
+assert.deepEqual(
+  unsortedRows.map((row) => row[0]),
+  ['2026/07/02', '2026/07/09'],
+  'newly imported order rows must be appended in ascending ship-date order',
+);
 
 const protectedHeaderSheet = {
   getRange() {
@@ -557,6 +595,39 @@ assert.equal(
   autoProtectMainSheet.grid.some((row) => String(row[1] || '').includes(autoDeletedOrder)),
   false,
   'automatic protection must remove reappeared deleted rows',
+);
+const futureNewOrder = '777-7777777-7777777';
+const secondAutoProtectMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード'],
+  Array.from({ length: 130 }, () => ['', '', '', '']).concat([
+    ['2026/07/09', `注文番号：${futureNewOrder}\n商品名：新規注文`, 8800, 'FUTURE'],
+    ['2026/07/01', `注文番号：${autoDeletedOrder}\n商品名：削除済み再表示`, 7000, 'AUTO'],
+  ]),
+);
+const secondAutoProtectDeletedSheet = makeSheet(
+  ['記録日時', '注文番号', '理由', '元行', '注文情報'],
+  [[new Date(), autoDeletedOrder, '初回自動保護', 132, '']],
+);
+const secondAutoProtectSnapshotSheet = makeSheet(['注文番号'], [[futureNewOrder], [autoDeletedOrder]]);
+const secondAutoProtectSpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: secondAutoProtectMainSheet,
+  削除済み注文: secondAutoProtectDeletedSheet,
+  注文番号スナップショット: secondAutoProtectSnapshotSheet,
+});
+assert.equal(
+  sandbox.enforceProtectedDeletedRows_(secondAutoProtectSpreadsheet, secondAutoProtectMainSheet, '2回目自動保護テスト'),
+  1,
+  'after the first cleanup, automatic protection must delete only order numbers already marked as deleted',
+);
+assert.equal(
+  secondAutoProtectMainSheet.grid.some((row) => String(row[1] || '').includes(futureNewOrder)),
+  true,
+  'new valid orders that land at row 132+ must not be marked deleted on later runs',
+);
+assert.equal(
+  secondAutoProtectMainSheet.grid.some((row) => String(row[1] || '').includes(autoDeletedOrder)),
+  false,
+  'known deleted orders must still be removed if they reappear',
 );
 
 const legacyColumns = sandbox.researchColumnMap_(

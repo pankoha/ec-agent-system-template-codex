@@ -19,6 +19,7 @@ const AMAZON_ORDER_IMPORTER_CONFIG = {
   processedLabelName: 'Amazon注文確定_処理済み',
   sender: 'seller-notification@amazon.co.jp',
   subjectKeyword: '注文確定',
+  targetTextKeywords: ['注文確定', '新規の注文', '注文番号'],
   threadLimitPerRun: 100,
   gmailSearchWindow: 'newer_than:30d',
   protectedDeleteStartRow: 132,
@@ -218,6 +219,7 @@ function reprocessReviewRowsFromGmail() {
   });
 
   if (rowsToAppend.length > 0) {
+    sortOrderRowsForAppend_(rowsToAppend);
     const startRow = orderSheet.getLastRow() + 1;
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
@@ -424,6 +426,7 @@ function importAmazonOrderEmails() {
   });
 
   if (rowsToAppend.length > 0) {
+    sortOrderRowsForAppend_(rowsToAppend);
     const startRow = orderSheet.getLastRow() + 1;
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
     orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
@@ -440,10 +443,13 @@ function importAmazonOrderEmails() {
 }
 
 function buildAmazonOrderGmailQuery_() {
+  const keywords = (AMAZON_ORDER_IMPORTER_CONFIG.targetTextKeywords || [AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword])
+    .map((keyword) => `"${keyword}"`)
+    .join(' ');
   return [
     `from:${AMAZON_ORDER_IMPORTER_CONFIG.sender}`,
     AMAZON_ORDER_IMPORTER_CONFIG.gmailSearchWindow || '',
-    `{subject:"${AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword}" "${AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword}"}`,
+    `{subject:"${AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword}" ${keywords}}`,
   ].filter(Boolean).join(' ');
 }
 
@@ -721,6 +727,23 @@ function buildOrderRow_(fields) {
   ];
 }
 
+function sortOrderRowsForAppend_(rows) {
+  rows.sort((left, right) => {
+    const leftDate = displayShipDateNumber_(left[0]);
+    const rightDate = displayShipDateNumber_(right[0]);
+    if (leftDate && rightDate && leftDate !== rightDate) {
+      return leftDate - rightDate;
+    }
+    if (leftDate !== rightDate) {
+      return leftDate ? -1 : 1;
+    }
+    const leftOrder = extractOrderNumber_(String(left[1] || ''));
+    const rightOrder = extractOrderNumber_(String(right[1] || ''));
+    return leftOrder.localeCompare(rightOrder);
+  });
+  return rows;
+}
+
 function salesAmountNumber_(value) {
   return Number(String(value || '').replace(/[^\d]/g, '')) || 0;
 }
@@ -840,8 +863,9 @@ function isTargetMessage_(message) {
   }
 
   const text = getMessageText_(message);
-  return text.indexOf(AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword) !== -1
-    && !!extractOrderNumber_(text);
+  const hasTargetKeyword = (AMAZON_ORDER_IMPORTER_CONFIG.targetTextKeywords || [])
+    .some((keyword) => text.indexOf(keyword) !== -1 || subject.indexOf(keyword) !== -1);
+  return hasTargetKeyword && !!extractOrderNumber_(text);
 }
 
 function getOrderNumberRecordsFromOrderSheet_(sheet, startRow, endRow) {
@@ -959,12 +983,37 @@ function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
   if (!AMAZON_ORDER_IMPORTER_CONFIG.autoDeleteProtectedRows) {
     return 0;
   }
-  return deleteRowsFromProtectedStartAndRememberOrders_(
-    spreadsheet,
-    orderSheet,
-    reason || '132行目以降の自動保護',
-    true,
-  );
+  const properties = PropertiesService.getScriptProperties();
+  const cleanupKey = 'PROTECTED_ROWS_BASELINE_CLEANED';
+  if (properties.getProperty(cleanupKey) !== 'true') {
+    const deleted = deleteRowsFromProtectedStartAndRememberOrders_(
+      spreadsheet,
+      orderSheet,
+      reason || '132行目以降の初回自動保護',
+      true,
+    );
+    properties.setProperty(cleanupKey, 'true');
+    return deleted;
+  }
+  return deleteKnownDeletedRowsFromProtectedStart_(spreadsheet, orderSheet);
+}
+
+function deleteKnownDeletedRowsFromProtectedStart_(spreadsheet, orderSheet) {
+  const startRow = AMAZON_ORDER_IMPORTER_CONFIG.protectedDeleteStartRow || 132;
+  const lastRow = orderSheet.getLastRow();
+  if (lastRow < startRow) {
+    updateKnownOrderSnapshot_(orderSheet);
+    return 0;
+  }
+
+  const deletedOrderNumbers = loadDeletedOrderNumbers_(spreadsheet);
+  const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, startRow, lastRow)
+    .filter((record) => deletedOrderNumbers.has(record.orderNumber));
+  const rowsToDelete = Array.from(new Set(records.map((record) => record.rowNumber)))
+    .sort((left, right) => right - left);
+  rowsToDelete.forEach((rowNumber) => orderSheet.deleteRow(rowNumber));
+  updateKnownOrderSnapshot_(orderSheet);
+  return rowsToDelete.length;
 }
 
 function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet, reason, skipManagementSync) {
