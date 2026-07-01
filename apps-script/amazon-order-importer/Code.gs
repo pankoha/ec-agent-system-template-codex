@@ -9,11 +9,12 @@
  */
 
 const AMAZON_ORDER_IMPORTER_CONFIG = {
-  spreadsheetId: '1fz_DnaigqwPvjQmRHyHagVFTR3tQRoLVHf46wqrjCSA',
+  spreadsheetId: '1bQCIpw74Rdz4Db8IXPNZXVCqr4qS3qVhCZY5dxRr6IU',
   spreadsheetTitle: '★注文確定商品リサーチ表★',
   orderSheetName: '注文確定商品リサーチ表',
+  researchSheetName: 'リサーチ管理表',
   reviewSheetName: '確認用',
-  processedLabelName: '処理済み',
+  processedLabelName: 'Amazon注文確定_処理済み',
   sender: 'seller-notification@amazon.co.jp',
   subjectKeyword: '注文確定',
   threadLimitPerRun: 50,
@@ -34,6 +35,10 @@ function onOpen() {
     .addItem('2026年6月以降だけ表示', 'showShipDatesFromJune2026')
     .addItem('既存行の注文情報をGmailから再作成', 'refreshExistingOrderDetailsFromGmail')
     .addItem('確認用からGmail再処理', 'reprocessReviewRowsFromGmail')
+    .addSeparator()
+    .addItem('リサーチ管理表を同期', 'syncResearchManagementSheet')
+    .addItem('リサーチを手動実行', 'researchListedItemsHourly')
+    .addItem('1時間リサーチトリガーを設定', 'setupHourlyTrigger')
     .addToUi();
 }
 
@@ -42,12 +47,14 @@ function setupAmazonOrderImporter() {
   spreadsheet.rename(AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetTitle);
 
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
-  ensureHeader_(orderSheet, ['出荷予定日', '注文情報', '検索ワード']);
+  migrateOrderSheetToFourColumns_(orderSheet);
+  ensureHeader_(orderSheet, ['出荷期限日', '注文情報', '売上金', '検索ワード']);
   orderSheet.setFrozenRows(1);
-  orderSheet.getRange('A:C').setWrap(true);
+  orderSheet.getRange('A:D').setWrap(true);
   orderSheet.setColumnWidths(1, 1, 120);
   orderSheet.setColumnWidths(2, 1, 520);
-  orderSheet.setColumnWidths(3, 1, 260);
+  orderSheet.setColumnWidths(3, 1, 110);
+  orderSheet.setColumnWidths(4, 1, 260);
 
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   ensureHeader_(reviewSheet, [
@@ -57,16 +64,25 @@ function setupAmazonOrderImporter() {
     '取得できた情報',
     '取得できなかった情報',
     'エラー内容',
+    '種別',
+    '注文番号',
+    '商品名',
+    '検索ワード',
+    '手動確認用URL',
+    'メモ',
   ]);
   reviewSheet.setFrozenRows(1);
-  reviewSheet.getRange('A:F').setWrap(true);
+  reviewSheet.getRange('A:L').setWrap(true);
   reviewSheet.setColumnWidths(1, 3, 160);
-  reviewSheet.setColumnWidths(4, 3, 320);
+  reviewSheet.setColumnWidths(4, 9, 260);
+
+  setupResearchManagementSheet_(spreadsheet);
 }
 
 function setupAmazonOrderImporterAndTrigger() {
   setupAmazonOrderImporter();
   installTimeDrivenTrigger_(30);
+  setupHourlyTrigger();
 }
 
 function sortAmazonResearchSheetAscending() {
@@ -119,17 +135,13 @@ function reprocessReviewRowsFromGmail() {
 
     foundOrderCount += 1;
     existingOrders.orderNumbers.add(orderNumber);
-    rowsToAppend.push([
-      fields.shipDate,
-      buildOrderSummary_(fields),
-      buildSearchWords_(fields),
-    ]);
+    rowsToAppend.push(buildOrderRow_(fields));
   });
 
   if (rowsToAppend.length > 0) {
     const startRow = orderSheet.getLastRow() + 1;
-    orderSheet.getRange(startRow, 1, rowsToAppend.length, 3).setValues(rowsToAppend);
-    orderSheet.getRange(startRow, 1, rowsToAppend.length, 3).setWrap(true);
+    orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
+    orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
     sortOrderSheet_(orderSheet);
   }
 
@@ -156,8 +168,8 @@ function repairOrderRows_(startRow, endRow) {
     return;
   }
 
-  const rowValues = orderSheet.getRange(firstRow, 1, finalRow - firstRow + 1, 3).getValues();
-  const updatedValues = rowValues.map((row) => [row[0], row[1], row[2]]);
+  const rowValues = orderSheet.getRange(firstRow, 1, finalRow - firstRow + 1, 4).getValues();
+  const updatedValues = rowValues.map((row) => [row[0], row[1], row[2], row[3]]);
   let checkedOrderCount = 0;
   let foundOrderCount = 0;
   let updatedRowCount = 0;
@@ -176,20 +188,16 @@ function repairOrderRows_(startRow, endRow) {
     }
 
     foundOrderCount += 1;
-    const nextRow = [
-      fields.shipDate,
-      buildOrderSummary_(fields),
-      buildSearchWords_(fields),
-    ];
+    const nextRow = buildOrderRow_(fields);
 
-    if (String(updatedValues[index][1]) !== nextRow[1] || String(updatedValues[index][2]) !== nextRow[2]) {
+    if (updatedValues[index].some((value, column) => String(value) !== String(nextRow[column]))) {
       updatedValues[index] = nextRow;
       updatedRowCount += 1;
     }
   }
 
-  orderSheet.getRange(firstRow, 1, updatedValues.length, 3).setValues(updatedValues);
-  orderSheet.getRange(firstRow, 1, updatedValues.length, 3).setWrap(true);
+  orderSheet.getRange(firstRow, 1, updatedValues.length, 4).setValues(updatedValues);
+  orderSheet.getRange(firstRow, 1, updatedValues.length, 4).setWrap(true);
   Logger.log(`指定行の注文情報修正: ${updatedRowCount}件 / Gmail検出: ${foundOrderCount}注文 / Gmail確認: ${checkedOrderCount}注文 / 対象行: ${firstRow}-${finalRow}`);
 }
 
@@ -215,8 +223,8 @@ function refreshExistingSalesAmountsFromGmail() {
     return;
   }
 
-  const rowValues = orderSheet.getRange(2, 1, lastRow - 1, 2).getValues();
-  const updatedValues = rowValues.map((row) => [row[1]]);
+  const rowValues = orderSheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  const updatedValues = rowValues.map((row) => [row[2]]);
   const salesAmountCache = {};
   const maxOrdersPerRun = 80;
   let checkedOrderCount = 0;
@@ -251,18 +259,16 @@ function refreshExistingSalesAmountsFromGmail() {
       continue;
     }
 
-    const nextOrderInfo = orderInfo.match(/\u58f2\u4e0a\u91d1\uff1a[^\n]*/)
-      ? orderInfo.replace(/\u58f2\u4e0a\u91d1\uff1a[^\n]*/, `\u58f2\u4e0a\u91d1\uff1a${salesAmount}`)
-      : `${orderInfo}\n\u58f2\u4e0a\u91d1\uff1a${salesAmount}`;
+    const nextSalesAmount = salesAmountNumber_(salesAmount);
 
-    if (nextOrderInfo !== orderInfo) {
-      updatedValues[index][0] = nextOrderInfo;
+    if (nextSalesAmount && Number(updatedValues[index][0]) !== nextSalesAmount) {
+      updatedValues[index][0] = nextSalesAmount;
       updatedRowCount += 1;
     }
   }
 
-  orderSheet.getRange(2, 2, updatedValues.length, 1).setValues(updatedValues);
-  orderSheet.getRange(2, 2, updatedValues.length, 1).setWrap(true);
+  orderSheet.getRange(2, 3, updatedValues.length, 1).setValues(updatedValues);
+  orderSheet.getRange(2, 3, updatedValues.length, 1).setNumberFormat('#,##0');
   Logger.log(`既存行の売上金更新: ${updatedRowCount}件 / 売上金検出: ${foundSalesAmountCount}注文 / Gmail確認: ${checkedOrderCount}注文`);
 }
 
@@ -325,11 +331,7 @@ function importAmazonOrderEmails() {
       }
 
       existingOrders.orderNumbers.add(result.fields.orderNumber);
-      rowsToAppend.push([
-        result.fields.shipDate,
-        buildOrderSummary_(result.fields),
-        buildSearchWords_(result.fields),
-      ]);
+      rowsToAppend.push(buildOrderRow_(result.fields));
       shouldMarkProcessed = true;
     });
 
@@ -340,16 +342,16 @@ function importAmazonOrderEmails() {
 
   if (rowsToAppend.length > 0) {
     const startRow = orderSheet.getLastRow() + 1;
-    orderSheet.getRange(startRow, 1, rowsToAppend.length, 3).setValues(rowsToAppend);
-    orderSheet.getRange(startRow, 1, rowsToAppend.length, 3).setWrap(true);
+    orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setValues(rowsToAppend);
+    orderSheet.getRange(startRow, 1, rowsToAppend.length, 4).setWrap(true);
   }
 
   sortOrderSheet_(orderSheet);
 
   if (reviewRows.length > 0) {
     const startRow = reviewSheet.getLastRow() + 1;
-    reviewSheet.getRange(startRow, 1, reviewRows.length, 6).setValues(reviewRows);
-    reviewSheet.getRange(startRow, 1, reviewRows.length, 6).setWrap(true);
+    reviewSheet.getRange(startRow, 1, reviewRows.length, 12).setValues(reviewRows);
+    reviewSheet.getRange(startRow, 1, reviewRows.length, 12).setWrap(true);
   }
 
   Logger.log(`追加: ${rowsToAppend.length}件 / 確認用: ${reviewRows.length}件`);
@@ -612,10 +614,25 @@ function buildOrderSummary_(fields) {
     rows.push(
       `商品名：${cleanDisplayProductName_(item.productName)}`,
       `SKU：${item.sku}`,
-      `売上金：${item.salesAmount}`,
     );
   });
   return rows.join('\n');
+}
+
+function buildOrderRow_(fields) {
+  const amounts = fields.items
+    .map((item) => salesAmountNumber_(item.salesAmount))
+    .filter((amount) => amount > 0);
+  return [
+    fields.shipDate,
+    buildOrderSummary_(fields),
+    amounts.reduce((total, amount) => total + amount, 0) || '',
+    buildSearchWords_(fields),
+  ];
+}
+
+function salesAmountNumber_(value) {
+  return Number(String(value || '').replace(/[^\d]/g, '')) || 0;
 }
 
 function buildSearchWords_(fields) {
@@ -653,7 +670,7 @@ function sortOrderSheet_(sheet) {
     return;
   }
 
-  sheet.getRange(2, 1, lastRow - 1, 3).sort({ column: 1, ascending: true });
+  sheet.getRange(2, 1, lastRow - 1, 4).sort({ column: 1, ascending: true });
   showRowsFromMinShipDate_(sheet);
 }
 
@@ -699,7 +716,34 @@ function buildReviewRow_(message, fields, missing, error) {
     JSON.stringify(fields),
     missing.join(', '),
     error,
+    'メール取込',
+    fields.orderNumber || '',
+    fields.items && fields.items[0] ? fields.items[0].productName : '',
+    fields.items && fields.items[0] ? fields.items[0].searchWord : '',
+    '',
+    '',
   ];
+}
+
+function migrateOrderSheetToFourColumns_(sheet) {
+  if (sheet.getLastColumn() < 3) {
+    return;
+  }
+  const headers = sheet.getRange(1, 1, 1, Math.max(4, sheet.getLastColumn())).getValues()[0];
+  if (headers[2] !== '検索ワード' || headers[3] === '検索ワード') {
+    return;
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow >= 2) {
+    const legacyRows = sheet.getRange(2, 2, lastRow - 1, 2).getValues();
+    const salesAmounts = legacyRows.map((row) => {
+      const match = String(row[0] || '').match(/売\s*上\s*金\s*[:：]\s*([^\n]+)/);
+      return [match ? salesAmountNumber_(match[1]) || '' : ''];
+    });
+    const searchWords = legacyRows.map((row) => [row[1]]);
+    sheet.getRange(2, 3, lastRow - 1, 1).setValues(salesAmounts).setNumberFormat('#,##0');
+    sheet.getRange(2, 4, lastRow - 1, 1).setValues(searchWords);
+  }
 }
 
 function isTargetMessage_(message) {
