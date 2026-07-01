@@ -186,8 +186,8 @@ assert.equal(
 );
 assert.equal(
   filter([candidate({ shippingKnown: false, shipping: 0 })]).length,
-  1,
-  'unknown shipping may use the product price for provisional judgment',
+  0,
+  'unknown shipping must not be appended because the total cannot be proven within the cap',
 );
 assert.match(
   sandbox.formatResearchResult_(candidate({ shippingKnown: false, shipping: 0 }), false),
@@ -207,8 +207,13 @@ assert.equal(
 );
 assert.equal(
   filter([candidate({ site: 'Jimoty', condition: '状態要確認' })], 10000, 'Jimoty').length,
+  0,
+  'Jimoty candidates with an unknown condition must not be appended',
+);
+assert.equal(
+  filter([candidate({ site: 'Jimoty', condition: '中古' })], 10000, 'Jimoty').length,
   1,
-  'Jimoty may retain a non-junk uncertain condition',
+  'Jimoty candidates may pass when condition and shipping are explicit',
 );
 
 assert.equal(
@@ -274,6 +279,14 @@ assert.equal(
   'https://www.2ndstreet.jp/goods/detail/goodsId/2219310049359/shopsId/30298',
   'Second Street product URLs must be canonicalized',
 );
+assert.equal(
+  sandbox.canonicalResearchUrl_('https://item.rakuten.co.jp/com/assets/domain-resources/favicon.ico'),
+  '',
+  'search-page assets must never be treated as product URLs',
+);
+assert.equal(sandbox.priceNear_('発売日 2009年 価格 1,513円'), 1513, 'labeled prices must be parsed');
+assert.equal(sandbox.priceNear_('<div data-price="9555">商品</div>'), 9555, 'structured prices must be parsed');
+assert.equal(sandbox.priceNear_('発売日 2009年 21ポイント'), 0, 'years and points must not be parsed as prices');
 assert.equal(
   sandbox.isDuplicateUrlInCell_(
     '8,000円｜中古｜https://jp.mercari.com/item/m123?tracking=abc',

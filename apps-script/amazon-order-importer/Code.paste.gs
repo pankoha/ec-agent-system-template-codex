@@ -893,7 +893,9 @@ const RESEARCH_STATUS = {
 
 const JUNK_PATTERN = /ジャンク|ジャンク品|動作未確認|動作未チェック|不動品?|通電不可|通電未確認|部品取り|破損(?:品|あり)?|壊れています|使えません|訳あり|難あり|現状品|修理前提|再生不可|読み込み不可|読込不可|視聴不可|欠品(?:あり)?|ディスク欠品|巻数不足|巻抜け|一部欠品/i;
 const UNAVAILABLE_PATTERN = /売り切れ|売切|SOLD\s*OUT|\bSOLD\b|販売終了|掲載終了|オークション.{0,8}終了|この商品は削除|ページが見つかりません|404\s*Not\s*Found/i;
-const NEW_CONDITION_PATTERN = /新品|新品未使用|未使用品|未開封|未使用に近い|new\b/i;
+const NEW_CONDITION_PATTERN = /新品|新品未使用|未使用品|未開封|brand\s*new|new\b/i;
+const USED_CONDITION_PATTERN = /中古|レンタル落ち|レンタルアップ|使用済|used\b/i;
+const SEARCH_RESULT_NOISE_PATTERN = /\/com\/assets\/|\/search\/|\/category\/|favicon\.ico(?:$|[?#])/i;
 
 const RESEARCH_SITES = [
   {
@@ -1333,7 +1335,12 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
     if (!isAllowedSiteCondition_(siteName, item.condition, text, rowData.newOnly)) {
       return false;
     }
-    const total = Number(item.price) + (item.shippingKnown ? Number(item.shipping || 0) : 0);
+    // C列の上限内であることを確定できない候補は自動追記しない。
+    // 送料不明を0円扱いすると、実際には上限超過の商品を記録してしまう。
+    if (!item.shippingKnown) {
+      return false;
+    }
+    const total = Number(item.price) + Number(item.shipping || 0);
     return total <= Number(maxPrice);
   });
 }
@@ -1341,22 +1348,20 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
 function isAllowedSiteCondition_(siteName, condition, text, newOnly) {
   const value = `${condition || ''} ${text || ''}`;
   if (newOnly) {
-    if (siteName === 'Amazon' && !/中古|used/i.test(value)) {
-      return true;
-    }
-    return NEW_CONDITION_PATTERN.test(value) && !/中古|使用済/i.test(value);
+    return NEW_CONDITION_PATTERN.test(value) && !USED_CONDITION_PATTERN.test(value);
   }
 
   if (siteName === 'Amazon') {
-    return /新品|中古品?\s*[-－]?\s*(ほぼ新品|非常に良い|良い|可)|中古\s*[-－]?\s*(ほぼ新品|非常に良い|良い|可)|状態要確認/i.test(value);
+    return NEW_CONDITION_PATTERN.test(value)
+      || /中古品?\s*[-－]?\s*(ほぼ新品|非常に良い|良い|可)|中古\s*[-－]?\s*(ほぼ新品|非常に良い|良い|可)/i.test(value);
   }
   if (siteName === 'Yahoo' || siteName === 'Mercari') {
     return /新品|未使用に近い|目立った傷や汚れなし|やや傷や汚れあり|傷や汚れあり/i.test(value);
   }
   if (siteName === 'Jimoty') {
-    return true;
+    return NEW_CONDITION_PATTERN.test(value) || USED_CONDITION_PATTERN.test(value);
   }
-  return true;
+  return NEW_CONDITION_PATTERN.test(value) || USED_CONDITION_PATTERN.test(value);
 }
 
 function isCompleteDvdCandidate_(text, expectedVolume) {
@@ -1433,7 +1438,7 @@ function formatResearchResult_(item, includeSiteName) {
 
 function normalizeResearchProductUrl_(rawUrl, siteName) {
   let url = decodeResearchHtml_(String(rawUrl || '')).trim();
-  if (!url || /^javascript:|^#/.test(url)) {
+  if (!url || /^javascript:|^#/.test(url) || SEARCH_RESULT_NOISE_PATTERN.test(url)) {
     return '';
   }
   if (url.startsWith('//')) {
@@ -1493,20 +1498,37 @@ function canonicalResearchUrl_(url) {
 }
 
 function priceNear_(html) {
+  const raw = decodeResearchHtml_(String(html || ''));
   const text = stripResearchHtml_(html);
-  const matches = [...text.matchAll(/(?:価格\s*[:：]?\s*)?[￥¥]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{3,7})\s*円/g)];
-  if (!matches.length) {
-    return 0;
+  const structuredPatterns = [
+    /"(?:price|lowPrice)"\s*:\s*"?([0-9]{2,7}(?:\.[0-9]+)?)"?/i,
+    /\bdata-(?:price|item-price)=["']([0-9]{2,7})["']/i,
+  ];
+  for (let index = 0; index < structuredPatterns.length; index += 1) {
+    const match = raw.match(structuredPatterns[index]);
+    if (match) {
+      return Number(String(match[1]).replace(/,/g, '')) || 0;
+    }
   }
-  return Number(matches[0][1].replace(/,/g, '')) || 0;
+  const textPatterns = [
+    /(?:販売価格|商品価格|現在価格|即決価格|価格)\s*[:：]?\s*[￥¥]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*円?/i,
+    /[￥¥]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})(?:\s*円)?/i,
+  ];
+  for (let index = 0; index < textPatterns.length; index += 1) {
+    const match = text.match(textPatterns[index]);
+    if (match) {
+      return Number(String(match[1]).replace(/,/g, '')) || 0;
+    }
+  }
+  return 0;
 }
 
 function shippingNear_(html) {
   const text = stripResearchHtml_(html);
-  if (/送料無料|送料\s*0\s*円/.test(text)) {
+  if (/送料無料|送料\s*(?:は)?\s*0\s*円|配送料無料/.test(text)) {
     return { known: true, amount: 0 };
   }
-  const match = text.match(/送料[^\d]{0,15}([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,6})\s*円/);
+  const match = text.match(/(?:送料|配送料)[^\d]{0,15}([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,6})\s*円/);
   return match
     ? { known: true, amount: Number(match[1].replace(/,/g, '')) || 0 }
     : { known: false, amount: 0 };
@@ -1524,9 +1546,6 @@ function conditionNear_(html, siteName) {
     if (match) {
       return match[0];
     }
-  }
-  if (siteName === 'Amazon') {
-    return '新品';
   }
   return siteName === 'Jimoty' ? '状態要確認' : '';
 }
