@@ -61,7 +61,9 @@ function onOpen() {
     .addItem('確認用からGmail再処理', 'reprocessReviewRowsFromGmail')
     .addSeparator()
     .addItem('リサーチ管理表を同期', 'syncResearchManagementSheet')
+    .addItem('旧リサーチ管理シートを削除', 'deleteLegacyResearchManagementSheet')
     .addItem('リサーチを手動実行', 'researchListedItemsHourly')
+    .addItem('表示中の全行を今すぐリサーチ', 'researchAllVisibleManagementRowsNow')
     .addItem('1時間リサーチトリガーを設定', 'setupHourlyTrigger')
     .addItem('注文番号連動トリガーを設定', 'setupOnChangeTrigger')
     .addToUi();
@@ -1320,10 +1322,26 @@ function setupResearchManagementSheet_(spreadsheet) {
     sheet.setColumnWidth(11, 160);
     sheet.setColumnWidth(12, 320);
   }
+  enforceResearchManagementResultHeaders_(sheet);
   return sheet;
 }
 
+function enforceResearchManagementResultHeaders_(sheet) {
+  const resultHeaders = ['Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場'];
+  resultHeaders.forEach((header, index) => {
+    const cell = sheet.getRange(1, 6 + index);
+    if (String(cell.getValue() || '').trim() !== header) {
+      cell.setValue(header);
+    }
+  });
+}
+
+function deleteLegacyResearchManagementSheet() {
+  return deleteUnusedLegacyResearchManagementSheets_(getTargetSpreadsheet_());
+}
+
 function deleteUnusedLegacyResearchManagementSheets_(spreadsheet) {
+  let deleted = 0;
   LEGACY_RESEARCH_MANAGEMENT_SHEET_NAMES.forEach((sheetName) => {
     if (sheetName === RESEARCH_AUTOMATION_CONFIG.sheetName) {
       return;
@@ -1331,8 +1349,11 @@ function deleteUnusedLegacyResearchManagementSheets_(spreadsheet) {
     const sheet = spreadsheet.getSheetByName(sheetName);
     if (sheet && typeof spreadsheet.deleteSheet === 'function') {
       spreadsheet.deleteSheet(sheet);
+      deleted += 1;
     }
   });
+  Logger.log(`旧リサーチ管理シート削除: ${deleted}件`);
+  return deleted;
 }
 
 function syncResearchManagementSheet() {
@@ -1359,6 +1380,7 @@ function syncResearchManagementByOrderNumber() {
 }
 
 function syncResearchManagementByOrderNumber_(spreadsheet) {
+  deleteUnusedLegacyResearchManagementSheets_(spreadsheet);
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const researchSheet = spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName);
   if (!researchSheet || (typeof researchSheet.isSheetHidden === 'function' && researchSheet.isSheetHidden())) {
@@ -1372,6 +1394,7 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
   }
 
   const orderColumns = researchColumnMap_(orderSheet);
+  enforceResearchManagementResultHeaders_(researchSheet);
   const researchColumns = researchColumnMap_(researchSheet);
   const orderLastRow = orderSheet.getLastRow();
   const mainOrders = new Map();
@@ -1975,6 +1998,12 @@ function researchListedItemsHourly() {
   } finally {
     lock.releaseLock();
   }
+}
+
+function researchAllVisibleManagementRowsNow() {
+  PropertiesService.getScriptProperties().setProperty('managementResearchVisibleRowCursor', '0');
+  Logger.log('リサーチ管理表の表示中の全行を、現在の実行で先頭からリサーチします。');
+  return researchListedItemsHourly();
 }
 
 function setManagedResearchStatus_(sheet, rowNumber, nextStatus) {

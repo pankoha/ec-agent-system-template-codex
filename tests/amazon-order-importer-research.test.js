@@ -605,7 +605,10 @@ function makeSpreadsheet(sheets) {
 }
 
 const legacyManagementSheet = makeSheet(['旧'], [['不要']]);
-const activeManagementSheet = makeSheet(['既存'], []);
+const activeManagementSheet = makeSheet(
+  ['A', 'B', 'C', 'D', 'E', '旧F', '旧G', '旧H', '旧I', 'その他サイト'],
+  [],
+);
 const legacySheetMap = {
   リサーチ管理シート: legacyManagementSheet,
   リサーチ管理表: activeManagementSheet,
@@ -620,6 +623,11 @@ assert.equal(
 assert.ok(
   legacySpreadsheet.getSheetByName('リサーチ管理表'),
   'active リサーチ管理表 must remain available',
+);
+assert.deepEqual(
+  activeManagementSheet.grid[0].slice(5, 10),
+  ['Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場'],
+  'existing リサーチ管理表 F:J headers must be corrected without rebuilding data rows',
 );
 
 const mainAppendSheet = makeSheet(['A', 'B', 'C', 'D', 'E', 'F'], [['', '', '', '', '', '']]);

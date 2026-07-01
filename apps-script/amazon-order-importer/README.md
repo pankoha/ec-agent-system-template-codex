@@ -118,7 +118,9 @@ node tools/build-amazon-order-importer-bundles.js
 ## リサーチ管理表への追記限定
 
 - 候補URLの追記先は `リサーチ管理表` のみです。`注文確定商品リサーチ表` 側へリサーチURLは追記しません。
-- `リサーチ管理シート` は旧名称の未使用シートです。`setupAmazonOrderImporterAndTrigger` / `setupAmazonOrderImporter` 実行時に存在する場合は削除します。
+- `リサーチ管理シート` は旧名称の未使用シートです。`setupAmazonOrderImporterAndTrigger` / `setupAmazonOrderImporter` / `syncResearchManagementSheet` 実行時に存在する場合は削除します。メニューの `旧リサーチ管理シートを削除` でも削除できます。
 - `リサーチ管理表` と `削除済み注文` は使用中です。削除しません。
+- 既存の `リサーチ管理表` でも、F〜J列ヘッダーは `Amazon` / `ヤフオク` / `メルカリ` / `ジモティ` / `楽天市場` に補正します。補正対象は1行目だけで、既存URL・メモ・色・書式は変更しません。
+- 自動リサーチを待たずに現在表示されている行を処理する場合は、メニューの `表示中の全行を今すぐリサーチ`、または関数 `researchAllVisibleManagementRowsNow` を実行します。
 
 テストでは、価格上限、送料、ジャンク除外、サイト別状態、muza新品限定、DVD巻数、URL正規化・重複防止、表示行判定、既存URL保持、より安い/状態が良い候補だけの追記を確認します。
