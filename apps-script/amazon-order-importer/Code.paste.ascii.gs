@@ -2387,8 +2387,7 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
   const cell = sheet.getRange(rowNumber, columnNumber);
   const current = String(cell.getValue() || '');
   const currentUrls = new Set(extractUrls_(current).map(canonicalResearchUrl_).filter(Boolean));
-  const currentComparableResults = current
-    .split('\n')
+  const currentComparableResults = splitResearchResultBlocks_(current)
     .map(parseResearchLineForComparison_)
     .filter((result) => result.url || result.price || result.conditionRank);
   const additions = [];
@@ -2412,6 +2411,21 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
     cell.setValue(current ? `${current}\n${additions.join('\n')}` : additions.join('\n')).setWrap(true);
   }
   return additions.length;
+}
+
+function splitResearchResultBlocks_(text) {
+  const value = String(text || '');
+  const matches = Array.from(value.matchAll(/https?:\/\/\S+/g));
+  if (!matches.length) {
+    return value.split('\n');
+  }
+  let blockStart = 0;
+  return matches.map((match) => {
+    const blockEnd = match.index + match[0].length;
+    const block = value.slice(blockStart, blockEnd).trim();
+    blockStart = blockEnd;
+    return block;
+  }).filter(Boolean);
 }
 
 function appendUrlToMainSheet_(rowNumber, columnNumber, resultLines) {
@@ -2492,13 +2506,22 @@ function isBetterResearchCandidate_(candidate, existingResults) {
 }
 
 function formatResearchResult_(item, includeSiteName) {
+  const title = shortenResearchTitle_(item.title || item.siteLabel || item.site || '\u5019\u88DC');
   const price = `${Number(item.price).toLocaleString('ja-JP')}\u5186`;
   const shipping = item.shippingKnown
-    ? (item.shipping ? `\uFF0B\u9001\u6599${Number(item.shipping).toLocaleString('ja-JP')}\u5186` : '\uFF0B\u9001\u6599\u7121\u6599')
-    : '\uFF5C\u9001\u6599\u8981\u78BA\u8A8D';
-  const condition = item.condition || '\u72B6\u614B\u8981\u78BA\u8A8D';
-  const prefix = includeSiteName ? `${item.siteLabel || item.site}\uFF5C` : '';
-  return `${prefix}${price}${shipping}\uFF5C${condition}\uFF5C${item.url}`;
+    ? (item.shipping ? `+${Number(item.shipping).toLocaleString('ja-JP')}\u5186` : '+\u9001\u6599\u7121\u6599')
+    : ' \u9001\u6599\u8981\u78BA\u8A8D';
+  const condition = item.condition ? ` ${item.condition}` : '';
+  const prefix = includeSiteName ? `${item.siteLabel || item.site} ` : '';
+  return `${prefix}${title}  ${price}${shipping}${condition}\n${item.url}`;
+}
+
+function shortenResearchTitle_(title) {
+  return String(title || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[|\uFF5C].*$/, '')
+    .trim()
+    .slice(0, 42);
 }
 
 function normalizeResearchProductUrl_(rawUrl, siteName) {

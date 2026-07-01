@@ -1216,8 +1216,7 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
   const cell = sheet.getRange(rowNumber, columnNumber);
   const current = String(cell.getValue() || '');
   const currentUrls = new Set(extractUrls_(current).map(canonicalResearchUrl_).filter(Boolean));
-  const currentComparableResults = current
-    .split('\n')
+  const currentComparableResults = splitResearchResultBlocks_(current)
     .map(parseResearchLineForComparison_)
     .filter((result) => result.url || result.price || result.conditionRank);
   const additions = [];
@@ -1241,6 +1240,21 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
     cell.setValue(current ? `${current}\n${additions.join('\n')}` : additions.join('\n')).setWrap(true);
   }
   return additions.length;
+}
+
+function splitResearchResultBlocks_(text) {
+  const value = String(text || '');
+  const matches = Array.from(value.matchAll(/https?:\/\/\S+/g));
+  if (!matches.length) {
+    return value.split('\n');
+  }
+  let blockStart = 0;
+  return matches.map((match) => {
+    const blockEnd = match.index + match[0].length;
+    const block = value.slice(blockStart, blockEnd).trim();
+    blockStart = blockEnd;
+    return block;
+  }).filter(Boolean);
 }
 
 function appendUrlToMainSheet_(rowNumber, columnNumber, resultLines) {
@@ -1321,13 +1335,22 @@ function isBetterResearchCandidate_(candidate, existingResults) {
 }
 
 function formatResearchResult_(item, includeSiteName) {
+  const title = shortenResearchTitle_(item.title || item.siteLabel || item.site || '候補');
   const price = `${Number(item.price).toLocaleString('ja-JP')}円`;
   const shipping = item.shippingKnown
-    ? (item.shipping ? `＋送料${Number(item.shipping).toLocaleString('ja-JP')}円` : '＋送料無料')
-    : '｜送料要確認';
-  const condition = item.condition || '状態要確認';
-  const prefix = includeSiteName ? `${item.siteLabel || item.site}｜` : '';
-  return `${prefix}${price}${shipping}｜${condition}｜${item.url}`;
+    ? (item.shipping ? `+${Number(item.shipping).toLocaleString('ja-JP')}円` : '+送料無料')
+    : ' 送料要確認';
+  const condition = item.condition ? ` ${item.condition}` : '';
+  const prefix = includeSiteName ? `${item.siteLabel || item.site} ` : '';
+  return `${prefix}${title}  ${price}${shipping}${condition}\n${item.url}`;
+}
+
+function shortenResearchTitle_(title) {
+  return String(title || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*[|｜].*$/, '')
+    .trim()
+    .slice(0, 42);
 }
 
 function normalizeResearchProductUrl_(rawUrl, siteName) {
