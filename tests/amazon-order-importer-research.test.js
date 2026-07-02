@@ -624,7 +624,7 @@ function makeSpreadsheet(sheets) {
 
 const legacyManagementSheet = makeSheet(['旧'], [['不要']]);
 const activeManagementSheet = makeSheet(
-  ['A', 'B', 'C', 'D', 'E', '旧F', '旧G', '旧H', '旧I', 'その他サイト'],
+  ['A', 'B', 'C', 'D', 'E', '旧F', '旧G', '旧H', '旧I', '楽天市場', '最終リサーチ日時', '確認メモ'],
   [],
 );
 const legacySheetMap = {
@@ -643,9 +643,9 @@ assert.ok(
   'active リサーチ管理表 must remain available',
 );
 assert.deepEqual(
-  activeManagementSheet.grid[0].slice(5, 10),
-  ['Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場'],
-  'existing リサーチ管理表 F:J headers must be corrected without rebuilding data rows',
+  activeManagementSheet.grid[0].slice(5, 11),
+  ['Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
+  'existing リサーチ管理表 F:K headers must be corrected without rebuilding data rows',
 );
 
 const mainAppendSheet = makeSheet(['A', 'B', 'C', 'D', 'E', 'F'], [['', '', '', '', '', '']]);
@@ -760,7 +760,7 @@ assert.equal(
 );
 
 const legacyColumns = sandbox.researchColumnMap_(
-  makeSheet(['出荷期限日', '注文情報', '売上金', '検索ワード', 'お届け先', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト'], []),
+  makeSheet(['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'], []),
 );
 assert.deepEqual(
   JSON.parse(JSON.stringify({
@@ -772,22 +772,22 @@ assert.deepEqual(
     Rakuten: legacyColumns.Rakuten,
     Other: legacyColumns.Other,
   })),
-  { status: 6, Amazon: 7, Yahoo: 8, Mercari: 9, Jimoty: 10, Rakuten: 11, Other: 11 },
-  'header mapping must preserve the existing A:K layout with a recipient column',
+  { status: 5, Amazon: 6, Yahoo: 7, Mercari: 8, Jimoty: 9, Rakuten: 10, Other: 11 },
+  'header mapping must map the revised A:K candidate URL layout',
 );
 
 const orderOne = '111-1111111-1111111';
 const orderTwo = '222-2222222-2222222';
 const orphanOrder = '333-3333333-3333333';
 const mainSheet = makeSheet(
-  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト'],
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
   [
     ['2026/07/01', `注文番号：${orderOne}\n商品名：商品1\nSKU：sku1`, 10000, 'ABC-1', '未リサーチ', '', '', '', '', ''],
     ['2026/07/02', `注文番号：${orderTwo}\n商品名：商品2\nSKU：sku2`, 12000, 'ABC-2', '未リサーチ', '', '', '', '', ''],
   ],
 );
 const managementSheet = makeSheet(
-  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト', '最終リサーチ日時', '確認メモ'],
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト', '最終リサーチ日時', '確認メモ'],
   [
     ['2026/07/01', `注文番号：${orderOne}\n商品名：商品1\nSKU：sku1`, 10000, 'ABC-1', '未リサーチ', '', '', '', '', '', '', ''],
     ['2026/06/30', `注文番号：${orphanOrder}\n商品名：削除対象\nSKU：sku3`, 9000, 'ABC-3', '候補あり', '', '', '', '', '', '', ''],
@@ -891,9 +891,9 @@ assert.equal(
 );
 assert.equal(managementSheet.grid[1][4], '候補あり');
 assert.match(managementSheet.grid[1][7], /m999/);
-assert.match(managementSheet.grid[1][11], /送料要確認/);
+assert.match(managementSheet.grid[1][12], /送料要確認/);
 assert.equal(
-  Object.prototype.toString.call(managementSheet.grid[1][10]),
+  Object.prototype.toString.call(managementSheet.grid[1][11]),
   '[object Date]',
   'last researched timestamp must be updated',
 );
@@ -907,6 +907,16 @@ assert.equal(
   'the same management URL must not be appended twice',
 );
 assert.equal(
+  sandbox.appendUrlToResearchManagementSheet(
+    orderOne,
+    'Other',
+    '駿河屋 5,500円｜中古｜https://www.suruga-ya.jp/product/detail/123456',
+  ),
+  1,
+  'other-site candidates must be appended to the revised K column',
+);
+assert.match(managementSheet.grid[1][10], /suruga-ya/, 'other-site result must be written to K column');
+assert.equal(
   sandbox.extractOrderNumberFromOrderInfo(`注文番号：${orderOne}\n商品名：商品1`),
   orderOne,
   'the shared order-number parser must read B-column order information',
@@ -914,13 +924,13 @@ assert.equal(
 
 const importedOrder = '777-7777777-7777777';
 const importedMainSheet = makeSheet(
-  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', 'その他サイト'],
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
   [
     ['注文日：2026/07/01\n出荷予定日：2026/07/09', `注文番号：${importedOrder}\n商品名：自動取得商品\nSKU：sku777`, 9800, 'AUTO-777', '', '', '', '', '', ''],
   ],
 );
 const importedManagementSheet = makeSheet(
-  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', '最終リサーチ日時', '確認メモ'],
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト', '最終リサーチ日時', '確認メモ'],
   [],
 );
 const importedReviewRows = [];
@@ -959,20 +969,20 @@ assert.equal(importedManagementSheet.grid[1][0], '注文日：2026/07/01\n出荷
 assert.equal(importedManagementSheet.grid[1][4], '候補あり', 'the imported management row status must be updated by immediate research');
 assert.match(importedManagementSheet.grid[1][7], /imported777/, 'immediate research results must sync to management');
 assert.equal(
-  Object.prototype.toString.call(importedManagementSheet.grid[1][10]),
+  Object.prototype.toString.call(importedManagementSheet.grid[1][11]),
   '[object Date]',
   'immediate research must update the management last-researched timestamp',
 );
 
 const hourlyOrder = '888-8888888-8888888';
 const hourlyMainSheet = makeSheet(
-  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場'],
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
   [
     ['注文日：2026/07/01\n出荷予定日：2026/07/10', `注文番号：${hourlyOrder}\n商品名：毎時対象\nSKU：sku888`, 11000, 'AUTO-888', '', '', '', '', '', ''],
   ],
 );
 const hourlyManagementSheet = makeSheet(
-  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', '最終リサーチ日時', '確認メモ'],
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト', '最終リサーチ日時', '確認メモ'],
   [
     ['注文日：2026/07/01\n出荷予定日：2026/07/10', `注文番号：${hourlyOrder}\n商品名：毎時対象\nSKU：sku888`, 11000, 'AUTO-888', '', '', '', '', '', '', '', ''],
   ],

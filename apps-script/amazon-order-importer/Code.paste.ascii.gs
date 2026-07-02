@@ -85,16 +85,17 @@ function setupAmazonOrderImporter() {
       '\u30E4\u30D5\u30AA\u30AF',
       '\u30E1\u30EB\u30AB\u30EA',
       '\u30B8\u30E2\u30C6\u30A3',
+      '\u697D\u5929\u5E02\u5834',
       '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8',
     ]);
     orderSheet.setFrozenRows(1);
-    orderSheet.getRange('A:J').setWrap(true);
+    orderSheet.getRange('A:K').setWrap(true);
     orderSheet.setColumnWidths(1, 1, 120);
     orderSheet.setColumnWidths(2, 1, 520);
     orderSheet.setColumnWidths(3, 1, 110);
     orderSheet.setColumnWidths(4, 1, 260);
     orderSheet.setColumnWidths(5, 1, 120);
-    orderSheet.setColumnWidths(6, 5, 230);
+    orderSheet.setColumnWidths(6, 6, 230);
   }
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   if (isSheetBlank_(reviewSheet)) {
@@ -1202,6 +1203,7 @@ const RESEARCH_HEADERS = [
   '\u30E1\u30EB\u30AB\u30EA',
   '\u30B8\u30E2\u30C6\u30A3',
   '\u697D\u5929\u5E02\u5834',
+  '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8',
   '\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642',
   '\u78BA\u8A8D\u30E1\u30E2',
 ];
@@ -1217,14 +1219,14 @@ const RESEARCH_COLUMN_ALIASES = {
   Yahoo: ['\u30E4\u30D5\u30AA\u30AF'],
   Mercari: ['\u30E1\u30EB\u30AB\u30EA'],
   Jimoty: ['\u30B8\u30E2\u30C6\u30A3'],
-  Rakuten: ['\u697D\u5929\u5E02\u5834', '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8'],
+  Rakuten: ['\u697D\u5929\u5E02\u5834'],
   Other: ['\u305D\u306E\u4ED6\u30B5\u30A4\u30C8'],
   lastResearchedAt: ['\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642', '\u6700\u7D42\u78BA\u8A8D\u65E5\u6642'],
   memo: ['\u78BA\u8A8D\u30E1\u30E2', '\u30E1\u30E2'],
 };
 
-const RESEARCH_RESULT_KEYS = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten'];
-const LEGACY_RESEARCH_RESULT_KEYS = RESEARCH_RESULT_KEYS.concat(['Other']);
+const RESEARCH_RESULT_KEYS = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Other'];
+const LEGACY_RESEARCH_RESULT_KEYS = RESEARCH_RESULT_KEYS;
 
 const RESEARCH_STATUS = {
   pending: '\u672A\u30EA\u30B5\u30FC\u30C1',
@@ -1313,28 +1315,47 @@ function setupResearchManagementSheet_(spreadsheet) {
   if (isSheetBlank_(sheet)) {
     ensureHeader_(sheet, RESEARCH_HEADERS);
     sheet.setFrozenRows(1);
-    sheet.getRange('A:L').setWrap(true);
+    sheet.getRange('A:M').setWrap(true);
     sheet.setColumnWidth(1, 120);
     sheet.setColumnWidth(2, 440);
     sheet.setColumnWidth(3, 110);
     sheet.setColumnWidth(4, 260);
     sheet.setColumnWidth(5, 120);
-    sheet.setColumnWidths(6, 5, 230);
-    sheet.setColumnWidth(11, 160);
-    sheet.setColumnWidth(12, 320);
+    sheet.setColumnWidths(6, 6, 230);
+    sheet.setColumnWidth(12, 160);
+    sheet.setColumnWidth(13, 320);
   }
+  upgradeResearchManagementHeaders_(sheet);
   enforceResearchManagementResultHeaders_(sheet);
   return sheet;
 }
 
 function enforceResearchManagementResultHeaders_(sheet) {
-  const resultHeaders = ['Amazon', '\u30E4\u30D5\u30AA\u30AF', '\u30E1\u30EB\u30AB\u30EA', '\u30B8\u30E2\u30C6\u30A3', '\u697D\u5929\u5E02\u5834'];
+  const resultHeaders = ['Amazon', '\u30E4\u30D5\u30AA\u30AF', '\u30E1\u30EB\u30AB\u30EA', '\u30B8\u30E2\u30C6\u30A3', '\u697D\u5929\u5E02\u5834', '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8'];
   resultHeaders.forEach((header, index) => {
     const cell = sheet.getRange(1, 6 + index);
     if (String(cell.getValue() || '').trim() !== header) {
       cell.setValue(header);
     }
   });
+}
+
+function upgradeResearchManagementHeaders_(sheet) {
+  const lastColumn = Math.max(13, sheet.getLastColumn());
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0]
+    .map((header) => String(header || '').trim());
+  const columnK = headers[10] || '';
+  const columnL = headers[11] || '';
+
+  if (columnK === '\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642' || columnK === '\u6700\u7D42\u78BA\u8A8D\u65E5\u6642') {
+    const lastRow = Math.max(1, sheet.getLastRow());
+    const metadataValues = sheet.getRange(1, 11, lastRow, 2).getValues();
+    sheet.getRange(1, 12, lastRow, 2).setValues(metadataValues).setWrap(true);
+    sheet.getRange(1, 11, lastRow, 1).clearContent();
+  } else if (!columnL && sheet.getLastColumn() < 12) {
+    sheet.getRange(1, 12).setValue('\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642');
+    sheet.getRange(1, 13).setValue('\u78BA\u8A8D\u30E1\u30E2');
+  }
 }
 
 function deleteLegacyResearchManagementSheet() {

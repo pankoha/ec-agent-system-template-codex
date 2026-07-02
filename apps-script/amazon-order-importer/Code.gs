@@ -85,16 +85,17 @@ function setupAmazonOrderImporter() {
       'ヤフオク',
       'メルカリ',
       'ジモティ',
+      '楽天市場',
       'その他サイト',
     ]);
     orderSheet.setFrozenRows(1);
-    orderSheet.getRange('A:J').setWrap(true);
+    orderSheet.getRange('A:K').setWrap(true);
     orderSheet.setColumnWidths(1, 1, 120);
     orderSheet.setColumnWidths(2, 1, 520);
     orderSheet.setColumnWidths(3, 1, 110);
     orderSheet.setColumnWidths(4, 1, 260);
     orderSheet.setColumnWidths(5, 1, 120);
-    orderSheet.setColumnWidths(6, 5, 230);
+    orderSheet.setColumnWidths(6, 6, 230);
   }
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   if (isSheetBlank_(reviewSheet)) {
