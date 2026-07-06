@@ -10,16 +10,16 @@
 
 const AMAZON_ORDER_IMPORTER_CONFIG = {
   spreadsheetId: '1bQCIpw74Rdz4Db8IXPNZXVCqr4qS3qVhCZY5dxRr6IU',
-  spreadsheetTitle: '★注文確定商品リサーチ表★',
-  orderSheetName: '注文確定商品リサーチ表',
-  researchSheetName: 'リサーチ管理表',
-  reviewSheetName: '確認用',
-  deletedOrderSheetName: '削除済み注文',
-  snapshotSheetName: '注文番号スナップショット',
-  processedLabelName: 'Amazon注文確定_処理済み',
+  spreadsheetTitle: '\u2605\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868\u2605',
+  orderSheetName: '\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868',
+  researchSheetName: '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868',
+  reviewSheetName: '\u78BA\u8A8D\u7528',
+  deletedOrderSheetName: '\u524A\u9664\u6E08\u307F\u6CE8\u6587',
+  snapshotSheetName: '\u6CE8\u6587\u756A\u53F7\u30B9\u30CA\u30C3\u30D7\u30B7\u30E7\u30C3\u30C8',
+  processedLabelName: 'Amazon\u6CE8\u6587\u78BA\u5B9A_\u51E6\u7406\u6E08\u307F',
   sender: 'seller-notification@amazon.co.jp',
-  subjectKeyword: '注文確定',
-  targetTextKeywords: ['注文確定', '新規の注文', '注文番号'],
+  subjectKeyword: '\u6CE8\u6587\u78BA\u5B9A',
+  targetTextKeywords: ['\u6CE8\u6587\u78BA\u5B9A', '\u65B0\u898F\u306E\u6CE8\u6587', '\u6CE8\u6587\u756A\u53F7'],
   threadLimitPerRun: 100,
   gmailSearchWindow: 'newer_than:30d',
   protectedDeleteStartRow: 132,
@@ -41,32 +41,32 @@ function getTargetSpreadsheet_() {
   const spreadsheetId = properties.getProperty('TARGET_SPREADSHEET_ID')
     || AMAZON_ORDER_IMPORTER_CONFIG.spreadsheetId;
   if (!spreadsheetId) {
-    throw new Error('対象スプレッドシートを取得できません。スプレッドシートからApps Scriptを開いて初期設定を実行してください。');
+    throw new Error('\u5BFE\u8C61\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3002\u30B9\u30D7\u30EC\u30C3\u30C9\u30B7\u30FC\u30C8\u304B\u3089Apps Script\u3092\u958B\u3044\u3066\u521D\u671F\u8A2D\u5B9A\u3092\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002');
   }
   return SpreadsheetApp.openById(spreadsheetId);
 }
 
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('Amazon注文メール')
-    .addItem('Amazon注文メールを取り込む', 'importAmazonOrderEmails')
+    .createMenu('Amazon\u6CE8\u6587\u30E1\u30FC\u30EB')
+    .addItem('Amazon\u6CE8\u6587\u30E1\u30FC\u30EB\u3092\u53D6\u308A\u8FBC\u3080', 'importAmazonOrderEmails')
     .addSeparator()
-    .addItem('初期セットアップ', 'setupAmazonOrderImporter')
-    .addItem('初期設定+30分自動実行', 'setupAmazonOrderImporterAndTrigger')
+    .addItem('\u521D\u671F\u30BB\u30C3\u30C8\u30A2\u30C3\u30D7', 'setupAmazonOrderImporter')
+    .addItem('\u521D\u671F\u8A2D\u5B9A+30\u5206\u81EA\u52D5\u5B9F\u884C', 'setupAmazonOrderImporterAndTrigger')
     .addSeparator()
-    .addItem('注文日で昇順ソート', 'sortAmazonResearchSheetAscending')
-    .addItem('2026年6月30日以降だけ表示', 'showShipDatesFromJune2026')
-    .addItem('132行目以降を削除済みにして削除', 'deleteRowsFrom132AndRememberOrders')
-    .addItem('既存行の注文情報をGmailから再作成', 'refreshExistingOrderDetailsFromGmail')
-    .addItem('確認用からGmail再処理', 'reprocessReviewRowsFromGmail')
+    .addItem('\u6CE8\u6587\u65E5\u3067\u6607\u9806\u30BD\u30FC\u30C8', 'sortAmazonResearchSheetAscending')
+    .addItem('2026\u5E746\u670830\u65E5\u4EE5\u964D\u3060\u3051\u8868\u793A', 'showShipDatesFromJune2026')
+    .addItem('132\u884C\u76EE\u4EE5\u964D\u3092\u524A\u9664\u6E08\u307F\u306B\u3057\u3066\u524A\u9664', 'deleteRowsFrom132AndRememberOrders')
+    .addItem('\u65E2\u5B58\u884C\u306E\u6CE8\u6587\u60C5\u5831\u3092Gmail\u304B\u3089\u518D\u4F5C\u6210', 'refreshExistingOrderDetailsFromGmail')
+    .addItem('\u78BA\u8A8D\u7528\u304B\u3089Gmail\u518D\u51E6\u7406', 'reprocessReviewRowsFromGmail')
     .addSeparator()
-    .addItem('リサーチ管理表を同期', 'syncResearchManagementSheet')
-    .addItem('Gmail取込診断', 'debugAmazonOrderImportStatus')
-    .addItem('旧リサーチ管理シートを削除', 'deleteLegacyResearchManagementSheet')
-    .addItem('リサーチを手動実行', 'researchAllVisibleManagementRowsNow')
-    .addItem('表示中の全行を今すぐリサーチ', 'researchAllVisibleManagementRowsNow')
-    .addItem('1時間リサーチトリガーを設定', 'setupHourlyTrigger')
-    .addItem('注文番号連動トリガーを設定', 'setupOnChangeTrigger')
+    .addItem('\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u3092\u540C\u671F', 'syncResearchManagementSheet')
+    .addItem('Gmail\u53D6\u8FBC\u8A3A\u65AD', 'debugAmazonOrderImportStatus')
+    .addItem('\u65E7\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u30B7\u30FC\u30C8\u3092\u524A\u9664', 'deleteLegacyResearchManagementSheet')
+    .addItem('\u30EA\u30B5\u30FC\u30C1\u3092\u624B\u52D5\u5B9F\u884C', 'researchAllVisibleManagementRowsNow')
+    .addItem('\u8868\u793A\u4E2D\u306E\u5168\u884C\u3092\u4ECA\u3059\u3050\u30EA\u30B5\u30FC\u30C1', 'researchAllVisibleManagementRowsNow')
+    .addItem('1\u6642\u9593\u30EA\u30B5\u30FC\u30C1\u30C8\u30EA\u30AC\u30FC\u3092\u8A2D\u5B9A', 'setupHourlyTrigger')
+    .addItem('\u6CE8\u6587\u756A\u53F7\u9023\u52D5\u30C8\u30EA\u30AC\u30FC\u3092\u8A2D\u5B9A', 'setupOnChangeTrigger')
     .addToUi();
 }
 
@@ -77,17 +77,17 @@ function setupAmazonOrderImporter() {
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   if (isSheetBlank_(orderSheet)) {
     ensureHeader_(orderSheet, [
-      '注文日 / 出荷予定日',
-      '注文情報',
-      '売上金',
-      '検索ワード',
-      'リサーチ状況',
+      '\u6CE8\u6587\u65E5 / \u51FA\u8377\u4E88\u5B9A\u65E5',
+      '\u6CE8\u6587\u60C5\u5831',
+      '\u58F2\u4E0A\u91D1',
+      '\u691C\u7D22\u30EF\u30FC\u30C9',
+      '\u30EA\u30B5\u30FC\u30C1\u72B6\u6CC1',
       'Amazon',
-      'ヤフオク',
-      'メルカリ',
-      'ジモティ',
-      '楽天市場',
-      'その他サイト',
+      '\u30E4\u30D5\u30AA\u30AF',
+      '\u30E1\u30EB\u30AB\u30EA',
+      '\u30B8\u30E2\u30C6\u30A3',
+      '\u697D\u5929\u5E02\u5834',
+      '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8',
     ]);
     orderSheet.setFrozenRows(1);
     orderSheet.getRange('A:K').setWrap(true);
@@ -101,18 +101,18 @@ function setupAmazonOrderImporter() {
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   if (isSheetBlank_(reviewSheet)) {
     ensureHeader_(reviewSheet, [
-      '処理日時',
-      'メール受信日時',
-      'メール件名',
-      '取得できた情報',
-      '取得できなかった情報',
-      'エラー内容',
-      '種別',
-      '注文番号',
-      '商品名',
-      '検索ワード',
-      '手動確認用URL',
-      'メモ',
+      '\u51E6\u7406\u65E5\u6642',
+      '\u30E1\u30FC\u30EB\u53D7\u4FE1\u65E5\u6642',
+      '\u30E1\u30FC\u30EB\u4EF6\u540D',
+      '\u53D6\u5F97\u3067\u304D\u305F\u60C5\u5831',
+      '\u53D6\u5F97\u3067\u304D\u306A\u304B\u3063\u305F\u60C5\u5831',
+      '\u30A8\u30E9\u30FC\u5185\u5BB9',
+      '\u7A2E\u5225',
+      '\u6CE8\u6587\u756A\u53F7',
+      '\u5546\u54C1\u540D',
+      '\u691C\u7D22\u30EF\u30FC\u30C9',
+      '\u624B\u52D5\u78BA\u8A8D\u7528URL',
+      '\u30E1\u30E2',
     ]);
     reviewSheet.setFrozenRows(1);
     reviewSheet.getRange('A:L').setWrap(true);
@@ -123,11 +123,11 @@ function setupAmazonOrderImporter() {
   const deletedOrderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.deletedOrderSheetName);
   if (isSheetBlank_(deletedOrderSheet)) {
     ensureHeader_(deletedOrderSheet, [
-      '記録日時',
-      '注文番号',
-      '理由',
-      '元行',
-      '注文情報',
+      '\u8A18\u9332\u65E5\u6642',
+      '\u6CE8\u6587\u756A\u53F7',
+      '\u7406\u7531',
+      '\u5143\u884C',
+      '\u6CE8\u6587\u60C5\u5831',
     ]);
     deletedOrderSheet.setFrozenRows(1);
     deletedOrderSheet.getRange('A:E').setWrap(true);
@@ -138,13 +138,13 @@ function setupAmazonOrderImporter() {
 
   const snapshotSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.snapshotSheetName);
   if (isSheetBlank_(snapshotSheet)) {
-    ensureHeader_(snapshotSheet, ['注文番号']);
+    ensureHeader_(snapshotSheet, ['\u6CE8\u6587\u756A\u53F7']);
     if (typeof snapshotSheet.hideSheet === 'function') {
       snapshotSheet.hideSheet();
     }
   }
 
-  enforceProtectedDeletedRows_(spreadsheet, orderSheet, '初期設定・自動取込前の132行目以降保護');
+  enforceProtectedDeletedRows_(spreadsheet, orderSheet, '\u521D\u671F\u8A2D\u5B9A\u30FB\u81EA\u52D5\u53D6\u8FBC\u524D\u306E132\u884C\u76EE\u4EE5\u964D\u4FDD\u8B77');
   setupResearchManagementSheet_(spreadsheet);
 }
 
@@ -170,7 +170,7 @@ function showShipDatesFromJune2026() {
 function deleteRowsFrom132AndRememberOrders() {
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
-  return deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet, 'メニュー実行による132行目以降の削除');
+  return deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet, '\u30E1\u30CB\u30E5\u30FC\u5B9F\u884C\u306B\u3088\u308B132\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664');
 }
 
 function repairRows2240To2440() {
@@ -181,8 +181,8 @@ function reprocessReviewRowsFromGmail() {
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
-  enforceProtectedDeletedRows_(spreadsheet, orderSheet, '確認用再処理前の132行目以降保護');
-  recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, '確認用再処理前の削除検知');
+  enforceProtectedDeletedRows_(spreadsheet, orderSheet, '\u78BA\u8A8D\u7528\u518D\u51E6\u7406\u524D\u306E132\u884C\u76EE\u4EE5\u964D\u4FDD\u8B77');
+  recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, '\u78BA\u8A8D\u7528\u518D\u51E6\u7406\u524D\u306E\u524A\u9664\u691C\u77E5');
   const existingOrders = loadExistingOrders_(orderSheet);
   const lastRow = reviewSheet.getLastRow();
   if (lastRow < 2) {
@@ -230,7 +230,7 @@ function reprocessReviewRowsFromGmail() {
   }
   updateKnownOrderSnapshot_(orderSheet);
 
-  Logger.log(`確認用再処理: ${rowsToAppend.length}件 / Gmail検出: ${foundOrderCount}注文 / 重複: ${skippedOrderCount}件 / 確認: ${checkedOrderCount}注文`);
+  Logger.log(`\u78BA\u8A8D\u7528\u518D\u51E6\u7406: ${rowsToAppend.length}\u4EF6 / Gmail\u691C\u51FA: ${foundOrderCount}\u6CE8\u6587 / \u91CD\u8907: ${skippedOrderCount}\u4EF6 / \u78BA\u8A8D: ${checkedOrderCount}\u6CE8\u6587`);
 }
 
 function refreshExistingOrderDetailsFromGmail() {
@@ -283,7 +283,7 @@ function repairOrderRows_(startRow, endRow) {
 
   orderSheet.getRange(firstRow, 1, updatedValues.length, 4).setValues(updatedValues);
   orderSheet.getRange(firstRow, 1, updatedValues.length, 4).setWrap(true);
-  Logger.log(`指定行の注文情報修正: ${updatedRowCount}件 / Gmail検出: ${foundOrderCount}注文 / Gmail確認: ${checkedOrderCount}注文 / 対象行: ${firstRow}-${finalRow}`);
+  Logger.log(`\u6307\u5B9A\u884C\u306E\u6CE8\u6587\u60C5\u5831\u4FEE\u6B63: ${updatedRowCount}\u4EF6 / Gmail\u691C\u51FA: ${foundOrderCount}\u6CE8\u6587 / Gmail\u78BA\u8A8D: ${checkedOrderCount}\u6CE8\u6587 / \u5BFE\u8C61\u884C: ${firstRow}-${finalRow}`);
 }
 
 function findOrderFieldsByOrderNumber_(orderNumber) {
@@ -354,7 +354,7 @@ function refreshExistingSalesAmountsFromGmail() {
 
   orderSheet.getRange(2, 3, updatedValues.length, 1).setValues(updatedValues);
   orderSheet.getRange(2, 3, updatedValues.length, 1).setNumberFormat('#,##0');
-  Logger.log(`既存行の売上金更新: ${updatedRowCount}件 / 売上金検出: ${foundSalesAmountCount}注文 / Gmail確認: ${checkedOrderCount}注文`);
+  Logger.log(`\u65E2\u5B58\u884C\u306E\u58F2\u4E0A\u91D1\u66F4\u65B0: ${updatedRowCount}\u4EF6 / \u58F2\u4E0A\u91D1\u691C\u51FA: ${foundSalesAmountCount}\u6CE8\u6587 / Gmail\u78BA\u8A8D: ${checkedOrderCount}\u6CE8\u6587`);
 }
 
 function findSalesAmountByOrderNumber_(orderNumber) {
@@ -382,8 +382,8 @@ function importAmazonOrderEmails() {
   const orderSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   const reviewSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
   const processedLabel = getOrCreateGmailLabel_(AMAZON_ORDER_IMPORTER_CONFIG.processedLabelName);
-  enforceProtectedDeletedRows_(spreadsheet, orderSheet, 'Gmail取込前の132行目以降保護');
-  recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, 'Gmail取込前の削除検知');
+  enforceProtectedDeletedRows_(spreadsheet, orderSheet, 'Gmail\u53D6\u8FBC\u524D\u306E132\u884C\u76EE\u4EE5\u964D\u4FDD\u8B77');
+  recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, 'Gmail\u53D6\u8FBC\u524D\u306E\u524A\u9664\u691C\u77E5');
   const existingOrders = loadExistingOrders_(orderSheet);
   const rowsToAppend = [];
   const importedOrderNumbers = [];
@@ -448,7 +448,7 @@ function importAmazonOrderEmails() {
     researchImportedOrderRowsAfterImport_(spreadsheet, importedOrderNumbers);
   }
 
-  Logger.log(`追加: ${rowsToAppend.length}件 / 確認用: ${reviewRows.length}件`);
+  Logger.log(`\u8FFD\u52A0: ${rowsToAppend.length}\u4EF6 / \u78BA\u8A8D\u7528: ${reviewRows.length}\u4EF6`);
 }
 
 function debugAmazonOrderImportStatus() {
@@ -490,17 +490,17 @@ function debugAmazonOrderImportStatus() {
   });
 
   const report = [
-    'Amazon注文メール取込 診断',
+    'Amazon\u6CE8\u6587\u30E1\u30FC\u30EB\u53D6\u8FBC \u8A3A\u65AD',
     `Spreadsheet ID: ${spreadsheet.getId()}`,
-    `注文シート: ${orderSheet ? `あり / 最終行 ${orderSheet.getLastRow()}` : 'なし'}`,
-    `確認用シート: ${reviewSheet ? `あり / 最終行 ${reviewSheet.getLastRow()}` : 'なし'}`,
-    `Gmail検索クエリ: ${query}`,
-    `検索スレッド数: ${threads.length}`,
-    `検索メッセージ数: ${messageCount}`,
-    `対象メッセージ数: ${targetMessageCount}`,
-    `解析成功数: ${parsedOkCount}`,
-    `既存または削除済みで追加対象外: ${duplicateOrDeletedCount}`,
-    `サンプル注文番号: ${sampleOrderNumbers.join(', ') || 'なし'}`,
+    `\u6CE8\u6587\u30B7\u30FC\u30C8: ${orderSheet ? `\u3042\u308A / \u6700\u7D42\u884C ${orderSheet.getLastRow()}` : '\u306A\u3057'}`,
+    `\u78BA\u8A8D\u7528\u30B7\u30FC\u30C8: ${reviewSheet ? `\u3042\u308A / \u6700\u7D42\u884C ${reviewSheet.getLastRow()}` : '\u306A\u3057'}`,
+    `Gmail\u691C\u7D22\u30AF\u30A8\u30EA: ${query}`,
+    `\u691C\u7D22\u30B9\u30EC\u30C3\u30C9\u6570: ${threads.length}`,
+    `\u691C\u7D22\u30E1\u30C3\u30BB\u30FC\u30B8\u6570: ${messageCount}`,
+    `\u5BFE\u8C61\u30E1\u30C3\u30BB\u30FC\u30B8\u6570: ${targetMessageCount}`,
+    `\u89E3\u6790\u6210\u529F\u6570: ${parsedOkCount}`,
+    `\u65E2\u5B58\u307E\u305F\u306F\u524A\u9664\u6E08\u307F\u3067\u8FFD\u52A0\u5BFE\u8C61\u5916: ${duplicateOrDeletedCount}`,
+    `\u30B5\u30F3\u30D7\u30EB\u6CE8\u6587\u756A\u53F7: ${sampleOrderNumbers.join(', ') || '\u306A\u3057'}`,
   ];
   Logger.log(report.join('\n'));
   return report.join('\n');
@@ -558,10 +558,10 @@ function parseAmazonOrderEmail_(text) {
 
       item.searchWord = buildSearchWord_(item.productName);
       if (!item.sku) {
-        item.sku = '取得不可';
+        item.sku = '\u53D6\u5F97\u4E0D\u53EF';
       }
       if (!item.salesAmount) {
-        item.salesAmount = '取得不可';
+        item.salesAmount = '\u53D6\u5F97\u4E0D\u53EF';
       }
 
       return item;
@@ -590,7 +590,7 @@ function parseAmazonOrderEmail_(text) {
       ok: false,
       fields,
       missing,
-      error: `必須項目を取得できませんでした: ${missing.join(', ')}`,
+      error: `\u5FC5\u9808\u9805\u76EE\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3067\u3057\u305F: ${missing.join(', ')}`,
     };
   }
 
@@ -611,7 +611,7 @@ function uniqueOrderItems_(items) {
 
 function buildOrderItemDedupeKey_(item) {
   const sku = normalizeSku_(item.sku);
-  if (sku && sku !== '取得不可') {
+  if (sku && sku !== '\u53D6\u5F97\u4E0D\u53EF') {
     return `${sku}|${item.salesAmount}`;
   }
 
@@ -623,51 +623,51 @@ function normalizeSku_(value) {
 }
 
 function splitProductBlocks_(text) {
-  const matches = [...String(text || '').matchAll(/(?:^|\n)(出\s*荷\s*予\s*定\s*日[\s\S]*?)(?=\n出\s*荷\s*予\s*定\s*日|$)/g)];
+  const matches = [...String(text || '').matchAll(/(?:^|\n)(\u51FA\s*\u8377\s*\u4E88\s*\u5B9A\s*\u65E5[\s\S]*?)(?=\n\u51FA\s*\u8377\s*\u4E88\s*\u5B9A\s*\u65E5|$)/g)];
   return matches
     .map((match) => match[1])
-    .filter((block) => /商\s*品\s*(?:名)?\s*[:：]/.test(block));
+    .filter((block) => /\u5546\s*\u54C1\s*(?:\u540D)?\s*[:\uFF1A]/.test(block));
 }
 
 function extractShipDate_(text) {
   const patterns = [
-    /出\s*荷\s*予\s*定\s*日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
-    /出\s*荷\s*予\s*定\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
-    /発\s*送\s*予\s*定\s*日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
+    /\u51FA\s*\u8377\s*\u4E88\s*\u5B9A\s*\u65E5\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/,
+    /\u51FA\s*\u8377\s*\u4E88\s*\u5B9A\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/,
+    /\u767A\s*\u9001\s*\u4E88\s*\u5B9A\s*\u65E5\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/,
   ];
   return normalizeDate_(firstMatch_(text, patterns));
 }
 
 function extractOrderDate_(text) {
   const patterns = [
-    /注\s*文\s*日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
-    /ご注文日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
-    /注文日時\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/,
+    /\u6CE8\s*\u6587\s*\u65E5\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/,
+    /\u3054\u6CE8\u6587\u65E5\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/,
+    /\u6CE8\u6587\u65E5\u6642\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/,
   ];
   return normalizeDate_(firstMatch_(text, patterns));
 }
 
 function extractOrderNumber_(text) {
-  return firstMatch_(text, [/注文番号\s*[:：]?\s*([0-9]{3}-[0-9]{7}-[0-9]{7})/, /\b([0-9]{3}-[0-9]{7}-[0-9]{7})\b/]);
+  return firstMatch_(text, [/\u6CE8\u6587\u756A\u53F7\s*[:\uFF1A]?\s*([0-9]{3}-[0-9]{7}-[0-9]{7})/, /\b([0-9]{3}-[0-9]{7}-[0-9]{7})\b/]);
 }
 
 function extractProductName_(text) {
   return firstMatch_(text, [
-    /商\s*品\s*名\s*[:：]\s*([\s\S]+?)(?=\n|コンディション\s*[:：]|S\s*K\s*U\s*[:：]|数量\s*[:：]|価格\s*[:：]|税金\s*[:：]|Amazon手数料\s*[:：]|売\s*上\s*金\s*[:：]|$)/,
-    /商\s*品\s*[:：]\s*([\s\S]+?)(?=\n|コンディション\s*[:：]|S\s*K\s*U\s*[:：]|数量\s*[:：]|価格\s*[:：]|税金\s*[:：]|Amazon手数料\s*[:：]|売\s*上\s*金\s*[:：]|$)/,
-    /タイトル\s*[:：]\s*(.+)/,
-    /(?:^|\n)件名\s*[:：]\s*注文確定\s*[:：]\s*[^\s　]+[\s　]+(.+)/,
-    /(?:^|\n)注文確定\s*[:：]\s*[^\s　]+[\s　]+(.+)/,
+    /\u5546\s*\u54C1\s*\u540D\s*[:\uFF1A]\s*([\s\S]+?)(?=\n|\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3\s*[:\uFF1A]|S\s*K\s*U\s*[:\uFF1A]|\u6570\u91CF\s*[:\uFF1A]|\u4FA1\u683C\s*[:\uFF1A]|\u7A0E\u91D1\s*[:\uFF1A]|Amazon\u624B\u6570\u6599\s*[:\uFF1A]|\u58F2\s*\u4E0A\s*\u91D1\s*[:\uFF1A]|$)/,
+    /\u5546\s*\u54C1\s*[:\uFF1A]\s*([\s\S]+?)(?=\n|\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3\s*[:\uFF1A]|S\s*K\s*U\s*[:\uFF1A]|\u6570\u91CF\s*[:\uFF1A]|\u4FA1\u683C\s*[:\uFF1A]|\u7A0E\u91D1\s*[:\uFF1A]|Amazon\u624B\u6570\u6599\s*[:\uFF1A]|\u58F2\s*\u4E0A\s*\u91D1\s*[:\uFF1A]|$)/,
+    /\u30BF\u30A4\u30C8\u30EB\s*[:\uFF1A]\s*(.+)/,
+    /(?:^|\n)\u4EF6\u540D\s*[:\uFF1A]\s*\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*[^\s\u3000]+[\s\u3000]+(.+)/,
+    /(?:^|\n)\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*[^\s\u3000]+[\s\u3000]+(.+)/,
   ]).replace(/\s+/g, ' ').trim();
 }
 
 function extractSku_(text) {
   return normalizeSku_(firstMatch_(text, [
-    /\bS\s*K\s*U\s*[:：]?\s*([^\n]+)/i,
-    /出品者\s*S\s*K\s*U\s*[:：]?\s*([^\n]+)/i,
-    /商品\s*S\s*K\s*U\s*[:：]?\s*([^\n]+)/i,
-    /(?:^|\n)件名\s*[:：]\s*注文確定\s*[:：]\s*([^\s　]+)/,
-    /(?:^|\n)注文確定\s*[:：]\s*([^\s　]+)/,
+    /\bS\s*K\s*U\s*[:\uFF1A]?\s*([^\n]+)/i,
+    /\u51FA\u54C1\u8005\s*S\s*K\s*U\s*[:\uFF1A]?\s*([^\n]+)/i,
+    /\u5546\u54C1\s*S\s*K\s*U\s*[:\uFF1A]?\s*([^\n]+)/i,
+    /(?:^|\n)\u4EF6\u540D\s*[:\uFF1A]\s*\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*([^\s\u3000]+)/,
+    /(?:^|\n)\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*([^\s\u3000]+)/,
   ]));
 }
 
@@ -678,22 +678,22 @@ function extractSalesAmount_(text) {
     return labeledSalesAmount;
   }
 
-  const matches = [...normalizedText.matchAll(/(?:[￥¥]\s*)?([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*円|[￥¥]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)/g)];
+  const matches = [...normalizedText.matchAll(/(?:[\uFFE5\u00A5]\s*)?([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*\u5186|[\uFFE5\u00A5]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)/g)];
   if (matches.length === 0) {
     return '';
   }
 
   const lastMatch = matches[matches.length - 1];
-  return `${lastMatch[1] || lastMatch[2]}円`;
+  return `${lastMatch[1] || lastMatch[2]}\u5186`;
 }
 
 function extractLabeledSalesAmount_(text) {
-  const labeledSalesMatches = [...String(text || '').matchAll(/売\s*上\s*金\s*[:：]?\s*(?:[￥¥]\s*)?([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*円?/g)];
+  const labeledSalesMatches = [...String(text || '').matchAll(/\u58F2\s*\u4E0A\s*\u91D1\s*[:\uFF1A]?\s*(?:[\uFFE5\u00A5]\s*)?([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)\s*\u5186?/g)];
   if (labeledSalesMatches.length === 0) {
     return '';
   }
 
-  return `${labeledSalesMatches[labeledSalesMatches.length - 1][1]}円`;
+  return `${labeledSalesMatches[labeledSalesMatches.length - 1][1]}\u5186`;
 }
 
 function buildSearchWord_(productName) {
@@ -711,21 +711,21 @@ function buildSearchWord_(productName) {
 function cleanSearchWord_(searchWord) {
   return String(searchWord || '')
     .split('\n')
-    .map((line) => line.replace(/^[\s*＊・-]+/, '').trim())
+    .map((line) => line.replace(/^[\s*\uFF0A\u30FB-]+/, '').trim())
     .join('\n')
     .trim();
 }
 
 function isDvdLikeProduct_(productName) {
-  if (/レコーダー|プレーヤー|プレイヤー|ディスクレコーダー|ディスクプレーヤー|ディスクプレイヤー/i.test(productName)) {
+  if (/\u30EC\u30B3\u30FC\u30C0\u30FC|\u30D7\u30EC\u30FC\u30E4\u30FC|\u30D7\u30EC\u30A4\u30E4\u30FC|\u30C7\u30A3\u30B9\u30AF\u30EC\u30B3\u30FC\u30C0\u30FC|\u30C7\u30A3\u30B9\u30AF\u30D7\u30EC\u30FC\u30E4\u30FC|\u30C7\u30A3\u30B9\u30AF\u30D7\u30EC\u30A4\u30E4\u30FC/i.test(productName)) {
     return false;
   }
 
-  return /レンタル落ち|全\s*[0-9０-９]+\s*巻|全巻セット|DVD|Blu-ray|ブルーレイ|マーケットプレイスDVDセット商品/i.test(productName);
+  return /\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u5168\s*[0-9\uFF10-\uFF19]+\s*\u5DFB|\u5168\u5DFB\u30BB\u30C3\u30C8|DVD|Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1/i.test(productName);
 }
 
 function buildDvdSearchWords_(productName) {
-  const volume = toHalfWidthNumber_((productName.match(/全\s*([0-9０-９]+)\s*巻/) || [])[1] || '');
+  const volume = toHalfWidthNumber_((productName.match(/\u5168\s*([0-9\uFF10-\uFF19]+)\s*\u5DFB/) || [])[1] || '');
   const title = cleanDvdTitle_(productName);
   if (!title) {
     return '';
@@ -736,28 +736,28 @@ function buildDvdSearchWords_(productName) {
     const keywordTitle = broadTitle || title;
     return uniqueLines_([
       keywordTitle,
-      `${keywordTitle} レンタル`,
+      `${keywordTitle} \u30EC\u30F3\u30BF\u30EB`,
       `${keywordTitle} DVD`,
-      `${keywordTitle} 中古`,
+      `${keywordTitle} \u4E2D\u53E4`,
       broadTitle && broadTitle !== title ? title : '',
     ]).join('\n');
   }
 
   return [
-    `${title} 全`,
-    volume ? `${title} ${volume}` : `${title} 全巻`,
-    `${title} レンタル`,
+    `${title} \u5168`,
+    volume ? `${title} ${volume}` : `${title} \u5168\u5DFB`,
+    `${title} \u30EC\u30F3\u30BF\u30EB`,
   ].join('\n');
 }
 
 function isCompleteDvdSetProduct_(productName, volume) {
-  return Boolean(volume) || /全巻セット|全\s*[0-9０-９]+\s*巻|全巻|コンプリート|complete\s*(?:box|set)?/i.test(String(productName || ''));
+  return Boolean(volume) || /\u5168\u5DFB\u30BB\u30C3\u30C8|\u5168\s*[0-9\uFF10-\uFF19]+\s*\u5DFB|\u5168\u5DFB|\u30B3\u30F3\u30D7\u30EA\u30FC\u30C8|complete\s*(?:box|set)?/i.test(String(productName || ''));
 }
 
 function cleanSingleDvdTitle_(title) {
   return String(title || '')
     .replace(/\[[^\]]+\]/g, ' ')
-    .replace(/[（(][^)）]*(?:年|版|字幕|吹替|日本語|英語|20[0-9]{2}|19[0-9]{2})[^)）]*[)）]/gi, ' ')
+    .replace(/[\uFF08(][^)\uFF09]*(?:\u5E74|\u7248|\u5B57\u5E55|\u5439\u66FF|\u65E5\u672C\u8A9E|\u82F1\u8A9E|20[0-9]{2}|19[0-9]{2})[^)\uFF09]*[)\uFF09]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -777,23 +777,23 @@ function uniqueLines_(lines) {
 
 function cleanDvdTitle_(productName) {
   let title = productName;
-  title = title.replace(/[【】]/g, ' ');
-  title = title.replace(/\[[^\]]*(レンタル落ち|マーケットプレイスDVDセット商品|DVD|Blu-ray|ブルーレイ|中古|セット商品)[^\]]*\]/gi, ' ');
-  title = title.replace(/レンタル落ち/gi, ' ');
-  title = title.replace(/マーケットプレイスDVDセット商品/gi, ' ');
-  title = title.replace(/Blu-ray|ブルーレイ|DVD/gi, ' ');
-  title = title.replace(/中古|セット商品/gi, ' ');
-  title = title.replace(/全\s*[0-9０-９]+\s*巻\s*セット?/g, ' ');
-  title = title.replace(/全巻セット/g, ' ');
-  title = title.replace(/[（(][^)）]*[)）]/g, ' ');
+  title = title.replace(/[\u3010\u3011]/g, ' ');
+  title = title.replace(/\[[^\]]*(\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1|DVD|Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|\u4E2D\u53E4|\u30BB\u30C3\u30C8\u5546\u54C1)[^\]]*\]/gi, ' ');
+  title = title.replace(/\u30EC\u30F3\u30BF\u30EB\u843D\u3061/gi, ' ');
+  title = title.replace(/\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1/gi, ' ');
+  title = title.replace(/Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|DVD/gi, ' ');
+  title = title.replace(/\u4E2D\u53E4|\u30BB\u30C3\u30C8\u5546\u54C1/gi, ' ');
+  title = title.replace(/\u5168\s*[0-9\uFF10-\uFF19]+\s*\u5DFB\s*\u30BB\u30C3\u30C8?/g, ' ');
+  title = title.replace(/\u5168\u5DFB\u30BB\u30C3\u30C8/g, ' ');
+  title = title.replace(/[\uFF08(][^)\uFF09]*[)\uFF09]/g, ' ');
   title = title.split(/\s*\+\s*/)[0];
   return title.replace(/\s+/g, ' ').trim();
 }
 
 function extractModelNumber_(productName) {
   const normalized = productName
-    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
-    .replace(/[【】\[\]]/g, ' ');
+    .replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/[\u3010\u3011\[\]]/g, ' ');
 
   const candidates = normalized.match(/\b[A-Z]{1,8}[A-Z0-9]*-[A-Z0-9-]+(?:\([A-Z0-9]+\))?\b|\b[A-Z]{1,6}[0-9]{1,5}[A-Z]?\b/gi) || [];
   const scored = candidates
@@ -806,9 +806,9 @@ function extractModelNumber_(productName) {
 
 function fallbackSearchWord_(productName) {
   return String(productName || '')
-    .replace(/[【】\[\]]/g, ' ')
-    .replace(/[（(][^)）]*[)）]/g, ' ')
-    .replace(/^[\s*＊・-]+/, '')
+    .replace(/[\u3010\u3011\[\]]/g, ' ')
+    .replace(/[\uFF08(][^)\uFF09]*[)\uFF09]/g, ' ')
+    .replace(/^[\s*\uFF0A\u30FB-]+/, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 80);
@@ -816,20 +816,20 @@ function fallbackSearchWord_(productName) {
 
 function cleanModelNumber_(modelNumber) {
   let value = modelNumber.toUpperCase();
-  value = value.replace(/[（(][A-Z0-9]+[)）]$/i, '');
+  value = value.replace(/[\uFF08(][A-Z0-9]+[)\uFF09]$/i, '');
   value = value.replace(COLOR_SUFFIX_PATTERN, '');
   return value;
 }
 
 function buildOrderSummary_(fields) {
-  const rows = [`注文番号：${fields.orderNumber}`];
+  const rows = [`\u6CE8\u6587\u756A\u53F7\uFF1A${fields.orderNumber}`];
   fields.items.forEach((item, index) => {
     if (fields.items.length > 1) {
-      rows.push(`【${index + 1}】`);
+      rows.push(`\u3010${index + 1}\u3011`);
     }
     rows.push(
-      `商品名：${cleanDisplayProductName_(item.productName)}`,
-      `SKU：${item.sku}`,
+      `\u5546\u54C1\u540D\uFF1A${cleanDisplayProductName_(item.productName)}`,
+      `SKU\uFF1A${item.sku}`,
     );
   });
   return rows.join('\n');
@@ -849,8 +849,8 @@ function buildOrderRow_(fields) {
 
 function buildOrderDateCell_(fields) {
   return [
-    fields.orderDate ? `注文日：${fields.orderDate}` : '',
-    fields.shipDate ? `出荷予定日：${fields.shipDate}` : '',
+    fields.orderDate ? `\u6CE8\u6587\u65E5\uFF1A${fields.orderDate}` : '',
+    fields.shipDate ? `\u51FA\u8377\u4E88\u5B9A\u65E5\uFF1A${fields.shipDate}` : '',
   ].filter(Boolean).join('\n') || fields.shipDate || '';
 }
 
@@ -881,12 +881,12 @@ function buildSearchWords_(fields) {
   }
 
   return fields.items
-    .map((item, index) => `【${index + 1}】\n${item.searchWord}`)
+    .map((item, index) => `\u3010${index + 1}\u3011\n${item.searchWord}`)
     .join('\n');
 }
 
 function cleanDisplayProductName_(productName) {
-  return String(productName || '').replace(/^[\s*＊・-]+/, '').trim();
+  return String(productName || '').replace(/^[\s*\uFF0A\u30FB-]+/, '').trim();
 }
 
 function loadExistingOrders_(sheet) {
@@ -950,15 +950,15 @@ function hideRowsBeforeDisplayDate_(sheet) {
 
 function displayShipDateNumber_(value) {
   const text = String(value || '');
-  const labeled = text.match(/出荷(?:期限|予定)日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
-  const fallback = text.match(/([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
+  const labeled = text.match(/\u51FA\u8377(?:\u671F\u9650|\u4E88\u5B9A)\u65E5\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/);
+  const fallback = text.match(/([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/);
   const normalized = normalizeDate_((labeled && labeled[1]) || (fallback && fallback[1]) || '');
   return Number(String(normalized || '').replace(/[^\d]/g, '')) || 0;
 }
 
 function displayOrderDateNumber_(value) {
   const text = String(value || '');
-  const labeled = text.match(/注文日\s*[:：]?\s*([0-9]{4}[\/.\-年]\s*[0-9]{1,2}[\/.\-月]\s*[0-9]{1,2}日?)/);
+  const labeled = text.match(/\u6CE8\u6587\u65E5\s*[:\uFF1A]?\s*([0-9]{4}[\/.\-\u5E74]\s*[0-9]{1,2}[\/.\-\u6708]\s*[0-9]{1,2}\u65E5?)/);
   const normalized = normalizeDate_((labeled && labeled[1]) || '');
   return Number(String(normalized || '').replace(/[^\d]/g, '')) || 0;
 }
@@ -977,7 +977,7 @@ function buildReviewRow_(message, fields, missing, error) {
     JSON.stringify(fields),
     missing.join(', '),
     error,
-    'メール取込',
+    '\u30E1\u30FC\u30EB\u53D6\u8FBC',
     fields.orderNumber || '',
     fields.items && fields.items[0] ? fields.items[0].productName : '',
     fields.items && fields.items[0] ? fields.items[0].searchWord : '',
@@ -1049,7 +1049,7 @@ function appendDeletedOrderRecords_(spreadsheet, records, reason) {
     rows.push([
       new Date(),
       record.orderNumber,
-      reason || '手動削除検知',
+      reason || '\u624B\u52D5\u524A\u9664\u691C\u77E5',
       record.rowNumber || '',
       record.orderInfo || '',
     ]);
@@ -1108,7 +1108,7 @@ function recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, reason) 
       rowNumber: '',
       orderInfo: '',
     }));
-  const recorded = appendDeletedOrderRecords_(spreadsheet, deletedRecords, reason || '手動削除検知');
+  const recorded = appendDeletedOrderRecords_(spreadsheet, deletedRecords, reason || '\u624B\u52D5\u524A\u9664\u691C\u77E5');
   updateKnownOrderSnapshot_(orderSheet);
   return recorded;
 }
@@ -1139,7 +1139,7 @@ function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
     const deleted = deleteRowsFromProtectedStartAndRememberOrders_(
       spreadsheet,
       orderSheet,
-      reason || '132行目以降の初回自動保護',
+      reason || '132\u884C\u76EE\u4EE5\u964D\u306E\u521D\u56DE\u81EA\u52D5\u4FDD\u8B77',
       true,
     );
     properties.setProperty(cleanupKey, 'true');
@@ -1175,7 +1175,7 @@ function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet,
   }
 
   const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, startRow, lastRow);
-  appendDeletedOrderRecords_(spreadsheet, records, reason || `${startRow}行目以降の削除指定`);
+  appendDeletedOrderRecords_(spreadsheet, records, reason || `${startRow}\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664\u6307\u5B9A`);
   orderSheet.deleteRows(startRow, lastRow - startRow + 1);
   updateKnownOrderSnapshot_(orderSheet);
   if (!skipManagementSync
@@ -1231,7 +1231,7 @@ function normalizeEmailText_(text) {
 }
 
 function getMessageText_(message) {
-  return normalizeEmailText_(`件名：${message.getSubject ? message.getSubject() || '' : ''}\n${message.getPlainBody() || ''}\n${stripHtml_(message.getBody() || '')}`);
+  return normalizeEmailText_(`\u4EF6\u540D\uFF1A${message.getSubject ? message.getSubject() || '' : ''}\n${message.getPlainBody() || ''}\n${stripHtml_(message.getBody() || '')}`);
 }
 
 function normalizeDate_(value) {
@@ -1239,7 +1239,7 @@ function normalizeDate_(value) {
     return '';
   }
 
-  const match = value.replace(/\s+/g, '').match(/([0-9]{4})[\/.\-年]([0-9]{1,2})[\/.\-月]([0-9]{1,2})/);
+  const match = value.replace(/\s+/g, '').match(/([0-9]{4})[\/.\-\u5E74]([0-9]{1,2})[\/.\-\u6708]([0-9]{1,2})/);
   if (!match) {
     return value;
   }
@@ -1259,16 +1259,16 @@ function stripHtml_(html) {
 }
 
 function toHalfWidthNumber_(value) {
-  return String(value || '').replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
+  return String(value || '').replace(/[\uFF10-\uFF19]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0));
 }
 
 function testKeywordGeneration() {
   const cases = [
-    ['【工事不要】 CORONA(コロナ) ウインドエアコン 冷房専用タイプ CW-16A(WS)', 'CW-16A'],
-    ['Panasonic パナソニック ブルーレイディスクレコーダー DMR-2W101-K', 'DMR-2W101'],
-    ['SHARP シャープ 加湿空気清浄機 KI-PX75-W', 'KI-PX75'],
-    ['ZOOM ズーム マルチトラックレコーダー 8トラック同時録音 24トラック同時再生 R24', 'R24'],
-    ['【境界線上のホライゾン + II [レンタル落ち] 全12巻セット [マーケットプレイスDVDセット商品]】', '境界線上のホライゾン 全\n境界線上のホライゾン 12\n境界線上のホライゾン レンタル'],
+    ['\u3010\u5DE5\u4E8B\u4E0D\u8981\u3011 CORONA(\u30B3\u30ED\u30CA) \u30A6\u30A4\u30F3\u30C9\u30A8\u30A2\u30B3\u30F3 \u51B7\u623F\u5C02\u7528\u30BF\u30A4\u30D7 CW-16A(WS)', 'CW-16A'],
+    ['Panasonic \u30D1\u30CA\u30BD\u30CB\u30C3\u30AF \u30D6\u30EB\u30FC\u30EC\u30A4\u30C7\u30A3\u30B9\u30AF\u30EC\u30B3\u30FC\u30C0\u30FC DMR-2W101-K', 'DMR-2W101'],
+    ['SHARP \u30B7\u30E3\u30FC\u30D7 \u52A0\u6E7F\u7A7A\u6C17\u6E05\u6D44\u6A5F KI-PX75-W', 'KI-PX75'],
+    ['ZOOM \u30BA\u30FC\u30E0 \u30DE\u30EB\u30C1\u30C8\u30E9\u30C3\u30AF\u30EC\u30B3\u30FC\u30C0\u30FC 8\u30C8\u30E9\u30C3\u30AF\u540C\u6642\u9332\u97F3 24\u30C8\u30E9\u30C3\u30AF\u540C\u6642\u518D\u751F R24', 'R24'],
+    ['\u3010\u5883\u754C\u7DDA\u4E0A\u306E\u30DB\u30E9\u30A4\u30BE\u30F3 + II [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] \u516812\u5DFB\u30BB\u30C3\u30C8 [\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1]\u3011', '\u5883\u754C\u7DDA\u4E0A\u306E\u30DB\u30E9\u30A4\u30BE\u30F3 \u5168\n\u5883\u754C\u7DDA\u4E0A\u306E\u30DB\u30E9\u30A4\u30BE\u30F3 12\n\u5883\u754C\u7DDA\u4E0A\u306E\u30DB\u30E9\u30A4\u30BE\u30F3 \u30EC\u30F3\u30BF\u30EB'],
   ];
 
   cases.forEach(([input, expected]) => {
@@ -1280,7 +1280,7 @@ function testKeywordGeneration() {
 }
 
 /**
- * Continuous sourcing research for rows displayed in 【リサーチ管理表】.
+ * Continuous sourcing research for rows displayed in \u3010\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u3011.
  *
  * Invariants:
  * - Every visible row remains eligible on every hourly run, regardless of status.
@@ -1291,66 +1291,66 @@ function testKeywordGeneration() {
  */
 
 const RESEARCH_AUTOMATION_CONFIG = {
-  sheetName: 'リサーチ管理表',
-  reviewSheetName: '確認用',
+  sheetName: '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868',
+  reviewSheetName: '\u78BA\u8A8D\u7528',
   maxRuntimeMs: 270000,
   maxRowsPerRun: 10000,
   requestTimeoutFallback: 30000,
   userAgent: 'Mozilla/5.0 (compatible; GoogleAppsScript sourcing-research/1.0)',
 };
 
-const LEGACY_RESEARCH_MANAGEMENT_SHEET_NAMES = ['リサーチ管理シート'];
+const LEGACY_RESEARCH_MANAGEMENT_SHEET_NAMES = ['\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u30B7\u30FC\u30C8'];
 
 const RESEARCH_HEADERS = [
-  '注文日 / 出荷予定日',
-  '注文情報',
-  '売上金',
-  '検索ワード',
-  'リサーチ状況',
+  '\u6CE8\u6587\u65E5 / \u51FA\u8377\u4E88\u5B9A\u65E5',
+  '\u6CE8\u6587\u60C5\u5831',
+  '\u58F2\u4E0A\u91D1',
+  '\u691C\u7D22\u30EF\u30FC\u30C9',
+  '\u30EA\u30B5\u30FC\u30C1\u72B6\u6CC1',
   'Amazon',
-  'ヤフオク',
-  'メルカリ',
-  'ジモティ',
-  '楽天市場',
-  'その他サイト',
-  '最終リサーチ日時',
-  '確認メモ',
+  '\u30E4\u30D5\u30AA\u30AF',
+  '\u30E1\u30EB\u30AB\u30EA',
+  '\u30B8\u30E2\u30C6\u30A3',
+  '\u697D\u5929\u5E02\u5834',
+  '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8',
+  '\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642',
+  '\u78BA\u8A8D\u30E1\u30E2',
 ];
 
 const RESEARCH_COLUMN_ALIASES = {
-  shipDate: ['注文日/出荷予定日', '注文日 / 出荷予定日', '出荷期限日', '出荷予定日'],
-  orderInfo: ['注文情報'],
-  orderNumber: ['注文番号'],
-  maxPrice: ['売上金'],
-  keyword: ['検索ワード'],
-  status: ['リサーチ状況'],
+  shipDate: ['\u6CE8\u6587\u65E5/\u51FA\u8377\u4E88\u5B9A\u65E5', '\u6CE8\u6587\u65E5 / \u51FA\u8377\u4E88\u5B9A\u65E5', '\u51FA\u8377\u671F\u9650\u65E5', '\u51FA\u8377\u4E88\u5B9A\u65E5'],
+  orderInfo: ['\u6CE8\u6587\u60C5\u5831'],
+  orderNumber: ['\u6CE8\u6587\u756A\u53F7'],
+  maxPrice: ['\u58F2\u4E0A\u91D1'],
+  keyword: ['\u691C\u7D22\u30EF\u30FC\u30C9'],
+  status: ['\u30EA\u30B5\u30FC\u30C1\u72B6\u6CC1'],
   Amazon: ['Amazon'],
-  Yahoo: ['ヤフオク'],
-  Mercari: ['メルカリ'],
-  Jimoty: ['ジモティ'],
-  Rakuten: ['楽天市場'],
-  Other: ['その他サイト'],
-  lastResearchedAt: ['最終リサーチ日時', '最終確認日時'],
-  memo: ['確認メモ', 'メモ'],
+  Yahoo: ['\u30E4\u30D5\u30AA\u30AF'],
+  Mercari: ['\u30E1\u30EB\u30AB\u30EA'],
+  Jimoty: ['\u30B8\u30E2\u30C6\u30A3'],
+  Rakuten: ['\u697D\u5929\u5E02\u5834'],
+  Other: ['\u305D\u306E\u4ED6\u30B5\u30A4\u30C8'],
+  lastResearchedAt: ['\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642', '\u6700\u7D42\u78BA\u8A8D\u65E5\u6642'],
+  memo: ['\u78BA\u8A8D\u30E1\u30E2', '\u30E1\u30E2'],
 };
 
 const RESEARCH_RESULT_KEYS = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Other'];
 const LEGACY_RESEARCH_RESULT_KEYS = RESEARCH_RESULT_KEYS;
 
 const RESEARCH_STATUS = {
-  pending: '未リサーチ',
-  running: 'リサーチ中',
-  found: '候補あり',
-  empty: '候補なし',
-  review: '要確認',
-  error: 'エラー',
+  pending: '\u672A\u30EA\u30B5\u30FC\u30C1',
+  running: '\u30EA\u30B5\u30FC\u30C1\u4E2D',
+  found: '\u5019\u88DC\u3042\u308A',
+  empty: '\u5019\u88DC\u306A\u3057',
+  review: '\u8981\u78BA\u8A8D',
+  error: '\u30A8\u30E9\u30FC',
 };
 
-const JUNK_PATTERN = /ジャンク|ジャンク品|動作未確認|動作未チェック|不動品?|通電不可|通電未確認|部品取り|破損(?:品|あり)?|壊れています|使えません|訳あり|難あり|現状品|修理前提|再生不可|読み込み不可|読込不可|視聴不可|欠品(?:あり)?|ディスク欠品|巻数不足|巻抜け|一部欠品/i;
-const JIMOTY_REJECT_PATTERN = /ジャンク|動作未確認|不動品?|通電不可|部品取り|破損|壊れています|使えません|修理前提|再生不可|読み込み不可|読込不可|視聴不可|欠品(?:あり)?|ディスク欠品|巻数不足|巻抜け|一部欠品/i;
-const UNAVAILABLE_PATTERN = /売り切れ|売切|SOLD\s*OUT|\bSOLD\b|販売終了|掲載終了|オークション.{0,8}終了|この商品は削除|ページが見つかりません|404\s*Not\s*Found/i;
-const NEW_CONDITION_PATTERN = /新品|新品未使用|未使用品|未開封|brand\s*new|new\b/i;
-const USED_CONDITION_PATTERN = /中古|レンタル落ち|レンタルアップ|使用済|used\b/i;
+const JUNK_PATTERN = /\u30B8\u30E3\u30F3\u30AF|\u30B8\u30E3\u30F3\u30AF\u54C1|\u52D5\u4F5C\u672A\u78BA\u8A8D|\u52D5\u4F5C\u672A\u30C1\u30A7\u30C3\u30AF|\u4E0D\u52D5\u54C1?|\u901A\u96FB\u4E0D\u53EF|\u901A\u96FB\u672A\u78BA\u8A8D|\u90E8\u54C1\u53D6\u308A|\u7834\u640D(?:\u54C1|\u3042\u308A)?|\u58CA\u308C\u3066\u3044\u307E\u3059|\u4F7F\u3048\u307E\u305B\u3093|\u8A33\u3042\u308A|\u96E3\u3042\u308A|\u73FE\u72B6\u54C1|\u4FEE\u7406\u524D\u63D0|\u518D\u751F\u4E0D\u53EF|\u8AAD\u307F\u8FBC\u307F\u4E0D\u53EF|\u8AAD\u8FBC\u4E0D\u53EF|\u8996\u8074\u4E0D\u53EF|\u6B20\u54C1(?:\u3042\u308A)?|\u30C7\u30A3\u30B9\u30AF\u6B20\u54C1|\u5DFB\u6570\u4E0D\u8DB3|\u5DFB\u629C\u3051|\u4E00\u90E8\u6B20\u54C1/i;
+const JIMOTY_REJECT_PATTERN = /\u30B8\u30E3\u30F3\u30AF|\u52D5\u4F5C\u672A\u78BA\u8A8D|\u4E0D\u52D5\u54C1?|\u901A\u96FB\u4E0D\u53EF|\u90E8\u54C1\u53D6\u308A|\u7834\u640D|\u58CA\u308C\u3066\u3044\u307E\u3059|\u4F7F\u3048\u307E\u305B\u3093|\u4FEE\u7406\u524D\u63D0|\u518D\u751F\u4E0D\u53EF|\u8AAD\u307F\u8FBC\u307F\u4E0D\u53EF|\u8AAD\u8FBC\u4E0D\u53EF|\u8996\u8074\u4E0D\u53EF|\u6B20\u54C1(?:\u3042\u308A)?|\u30C7\u30A3\u30B9\u30AF\u6B20\u54C1|\u5DFB\u6570\u4E0D\u8DB3|\u5DFB\u629C\u3051|\u4E00\u90E8\u6B20\u54C1/i;
+const UNAVAILABLE_PATTERN = /\u58F2\u308A\u5207\u308C|\u58F2\u5207|SOLD\s*OUT|\bSOLD\b|\u8CA9\u58F2\u7D42\u4E86|\u63B2\u8F09\u7D42\u4E86|\u30AA\u30FC\u30AF\u30B7\u30E7\u30F3.{0,8}\u7D42\u4E86|\u3053\u306E\u5546\u54C1\u306F\u524A\u9664|\u30DA\u30FC\u30B8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093|404\s*Not\s*Found/i;
+const NEW_CONDITION_PATTERN = /\u65B0\u54C1|\u65B0\u54C1\u672A\u4F7F\u7528|\u672A\u4F7F\u7528\u54C1|\u672A\u958B\u5C01|brand\s*new|new\b/i;
+const USED_CONDITION_PATTERN = /\u4E2D\u53E4|\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u30A2\u30C3\u30D7|\u4F7F\u7528\u6E08|used\b/i;
 const SEARCH_RESULT_NOISE_PATTERN = /\/com\/assets\/|\/search\/|\/category\/|favicon\.ico(?:$|[?#])/i;
 
 const RESEARCH_SITES = [
@@ -1363,28 +1363,28 @@ const RESEARCH_SITES = [
   },
   {
     key: 'Yahoo',
-    label: 'ヤフオク',
+    label: '\u30E4\u30D5\u30AA\u30AF',
     column: 7,
     resultHost: /page\.auctions\.yahoo\.co\.jp\/jp\/auction\//i,
     searchUrl: (keyword, maxPrice) => `https://auctions.yahoo.co.jp/search/search?p=${encodeURIComponent(keyword)}&aucmaxprice=${Math.max(1, maxPrice)}`,
   },
   {
     key: 'Mercari',
-    label: 'メルカリ',
+    label: '\u30E1\u30EB\u30AB\u30EA',
     column: 8,
     resultHost: /jp\.mercari\.com\/item\//i,
     searchUrl: (keyword, maxPrice) => `https://jp.mercari.com/search?keyword=${encodeURIComponent(keyword)}&price_max=${Math.max(1, maxPrice)}`,
   },
   {
     key: 'Jimoty',
-    label: 'ジモティ',
+    label: '\u30B8\u30E2\u30C6\u30A3',
     column: 9,
     resultHost: /jmty\.jp\/.+\/article-/i,
     searchUrl: (keyword) => `https://jmty.jp/all/sale?keyword=${encodeURIComponent(keyword)}`,
   },
   {
     key: 'Rakuten',
-    label: '楽天市場',
+    label: '\u697D\u5929\u5E02\u5834',
     column: 10,
     resultHost: /item\.rakuten\.co\.jp\//i,
     searchUrl: (keyword) => `https://search.rakuten.co.jp/search/mall/${encodeURIComponent(keyword)}/`,
@@ -1394,25 +1394,25 @@ const RESEARCH_SITES = [
 const OTHER_RESEARCH_SITES = [
   {
     key: 'Surugaya',
-    label: '駿河屋',
+    label: '\u99FF\u6CB3\u5C4B',
     resultHost: /suruga-ya\.jp\/product\/detail\//i,
     searchUrl: (keyword) => `https://www.suruga-ya.jp/search?search_word=${encodeURIComponent(keyword)}`,
   },
   {
     key: 'Offmall',
-    label: 'オフモール',
+    label: '\u30AA\u30D5\u30E2\u30FC\u30EB',
     resultHost: /netmall\.hardoff\.co\.jp\/product\//i,
     searchUrl: (keyword) => `https://netmall.hardoff.co.jp/search/?q=${encodeURIComponent(keyword)}`,
   },
   {
     key: 'SecondStreet',
-    label: 'セカンドストリート',
+    label: '\u30BB\u30AB\u30F3\u30C9\u30B9\u30C8\u30EA\u30FC\u30C8',
     resultHost: /2ndstreet\.jp\/goods\/detail\/goodsId\//i,
     searchUrl: (keyword) => `https://www.2ndstreet.jp/search?keyword=${encodeURIComponent(keyword)}`,
   },
   {
     key: 'NetOff',
-    label: 'ネットオフ',
+    label: '\u30CD\u30C3\u30C8\u30AA\u30D5',
     resultHost: /netoff\.co\.jp\/detail\/[0-9]+\//i,
     searchUrl: (keyword) => `https://www.netoff.co.jp/cmdtyallsearch/?word=${encodeURIComponent(keyword)}`,
   },
@@ -1440,7 +1440,7 @@ function setupResearchManagementSheet_(spreadsheet) {
 }
 
 function enforceResearchManagementResultHeaders_(sheet) {
-  const resultHeaders = ['Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'];
+  const resultHeaders = ['Amazon', '\u30E4\u30D5\u30AA\u30AF', '\u30E1\u30EB\u30AB\u30EA', '\u30B8\u30E2\u30C6\u30A3', '\u697D\u5929\u5E02\u5834', '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8'];
   resultHeaders.forEach((header, index) => {
     const cell = sheet.getRange(1, 6 + index);
     if (String(cell.getValue() || '').trim() !== header) {
@@ -1456,14 +1456,14 @@ function upgradeResearchManagementHeaders_(sheet) {
   const columnK = headers[10] || '';
   const columnL = headers[11] || '';
 
-  if (columnK === '最終リサーチ日時' || columnK === '最終確認日時') {
+  if (columnK === '\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642' || columnK === '\u6700\u7D42\u78BA\u8A8D\u65E5\u6642') {
     const lastRow = Math.max(1, sheet.getLastRow());
     const metadataValues = sheet.getRange(1, 11, lastRow, 2).getValues();
     sheet.getRange(1, 12, lastRow, 2).setValues(metadataValues).setWrap(true);
     sheet.getRange(1, 11, lastRow, 1).clearContent();
   } else if (!columnL && sheet.getLastColumn() < 12) {
-    sheet.getRange(1, 12).setValue('最終リサーチ日時');
-    sheet.getRange(1, 13).setValue('確認メモ');
+    sheet.getRange(1, 12).setValue('\u6700\u7D42\u30EA\u30B5\u30FC\u30C1\u65E5\u6642');
+    sheet.getRange(1, 13).setValue('\u78BA\u8A8D\u30E1\u30E2');
   }
 }
 
@@ -1483,7 +1483,7 @@ function deleteUnusedLegacyResearchManagementSheets_(spreadsheet) {
       deleted += 1;
     }
   });
-  Logger.log(`旧リサーチ管理シート削除: ${deleted}件`);
+  Logger.log(`\u65E7\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u30B7\u30FC\u30C8\u524A\u9664: ${deleted}\u4EF6`);
   return deleted;
 }
 
@@ -1498,12 +1498,12 @@ function syncResearchManagementSheet_(spreadsheet) {
 function syncResearchManagementByOrderNumber() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) {
-    Logger.log('別の同期またはリサーチ処理が実行中のため、注文番号同期を終了しました。');
+    Logger.log('\u5225\u306E\u540C\u671F\u307E\u305F\u306F\u30EA\u30B5\u30FC\u30C1\u51E6\u7406\u304C\u5B9F\u884C\u4E2D\u306E\u305F\u3081\u3001\u6CE8\u6587\u756A\u53F7\u540C\u671F\u3092\u7D42\u4E86\u3057\u307E\u3057\u305F\u3002');
     return 0;
   }
   try {
     const result = syncResearchManagementByOrderNumber_(getTargetSpreadsheet_());
-    Logger.log(`注文番号同期: ${result.appended}行追加 / ${result.deleted}行削除 / 重複${result.duplicates}件`);
+    Logger.log(`\u6CE8\u6587\u756A\u53F7\u540C\u671F: ${result.appended}\u884C\u8FFD\u52A0 / ${result.deleted}\u884C\u524A\u9664 / \u91CD\u8907${result.duplicates}\u4EF6`);
     return result.appended;
   } finally {
     lock.releaseLock();
@@ -1525,9 +1525,9 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
   if (!researchSheet || (typeof researchSheet.isSheetHidden === 'function' && researchSheet.isSheetHidden())) {
     writeSynchronizationCheck_(
       spreadsheet,
-      '要確認',
+      '\u8981\u78BA\u8A8D',
       '',
-      researchSheet ? 'リサーチ管理表が非表示のため、メインシートのみ処理します。' : 'リサーチ管理表が存在しないため、メインシートのみ処理します。',
+      researchSheet ? '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u304C\u975E\u8868\u793A\u306E\u305F\u3081\u3001\u30E1\u30A4\u30F3\u30B7\u30FC\u30C8\u306E\u307F\u51E6\u7406\u3057\u307E\u3059\u3002' : '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u304C\u5B58\u5728\u3057\u306A\u3044\u305F\u3081\u3001\u30E1\u30A4\u30F3\u30B7\u30FC\u30C8\u306E\u307F\u51E6\u7406\u3057\u307E\u3059\u3002',
     );
     return { appended: 0, deleted: 0, duplicates: 0, available: false };
   }
@@ -1562,7 +1562,7 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
   mainOrders.forEach((entries, orderNumber) => {
     if (entries.length > 1) {
       duplicates += 1;
-      writeSynchronizationCheck_(spreadsheet, '注文番号重複', orderNumber, '注文確定商品リサーチ表に同じ注文番号が複数あります。');
+      writeSynchronizationCheck_(spreadsheet, '\u6CE8\u6587\u756A\u53F7\u91CD\u8907', orderNumber, '\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868\u306B\u540C\u3058\u6CE8\u6587\u756A\u53F7\u304C\u8907\u6570\u3042\u308A\u307E\u3059\u3002');
     }
   });
 
@@ -1606,15 +1606,15 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
     }
     if (rows.length > 1) {
       duplicates += 1;
-      writeSynchronizationCheck_(spreadsheet, '注文番号重複', orderNumber, 'リサーチ管理表に同じ注文番号が複数あるため、自動更新を保留します。');
+      writeSynchronizationCheck_(spreadsheet, '\u6CE8\u6587\u756A\u53F7\u91CD\u8907', orderNumber, '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u306B\u540C\u3058\u6CE8\u6587\u756A\u53F7\u304C\u8907\u6570\u3042\u308B\u305F\u3081\u3001\u81EA\u52D5\u66F4\u65B0\u3092\u4FDD\u7559\u3057\u307E\u3059\u3002');
     }
   });
   if (unresolvedMainOrderRows) {
     writeSynchronizationCheck_(
       spreadsheet,
-      '要確認',
+      '\u8981\u78BA\u8A8D',
       '',
-      `メインシートに注文番号を取得できない行が${unresolvedMainOrderRows}件あるため、管理表の削除同期を保留しました。`,
+      `\u30E1\u30A4\u30F3\u30B7\u30FC\u30C8\u306B\u6CE8\u6587\u756A\u53F7\u3092\u53D6\u5F97\u3067\u304D\u306A\u3044\u884C\u304C${unresolvedMainOrderRows}\u4EF6\u3042\u308B\u305F\u3081\u3001\u7BA1\u7406\u8868\u306E\u524A\u9664\u540C\u671F\u3092\u4FDD\u7559\u3057\u307E\u3057\u305F\u3002`,
     );
   }
   const additions = [];
@@ -1670,7 +1670,7 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
     researchSheet.getRange(researchSheet.getLastRow() + 1, 1, additions.length, additions[0].length).setValues(additions).setWrap(true);
   }
   if (canUseDeletedOrderRegistry && deletedRecordsFromManagement.length && typeof appendDeletedOrderRecords_ === 'function') {
-    appendDeletedOrderRecords_(spreadsheet, deletedRecordsFromManagement, 'リサーチ管理表との同期で削除検知');
+    appendDeletedOrderRecords_(spreadsheet, deletedRecordsFromManagement, '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u3068\u306E\u540C\u671F\u3067\u524A\u9664\u691C\u77E5');
   }
   rowsToDelete.sort((left, right) => right - left).forEach((rowNumber) => researchSheet.deleteRow(rowNumber));
   return {
@@ -1683,7 +1683,7 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
 
 function researchRowKey_(orderInfo, keyword) {
   const orderNumber = extractOrderNumberFromOrderInfo(orderInfo);
-  const sku = (String(orderInfo || '').match(/SKU\s*[:：]\s*([^\n]+)/i) || [])[1] || '';
+  const sku = (String(orderInfo || '').match(/SKU\s*[:\uFF1A]\s*([^\n]+)/i) || [])[1] || '';
   const base = orderNumber || String(orderInfo || '').replace(/\s/g, '').slice(0, 160);
   return base && keyword ? `${base}|${sku.trim()}|${String(keyword).replace(/\s/g, '').slice(0, 160)}` : '';
 }
@@ -1754,7 +1754,7 @@ function findResearchManagementRowByOrderNumber(orderNumber) {
   const spreadsheet = getTargetSpreadsheet_();
   const found = findResearchManagementRowsByOrderNumber_(spreadsheet, orderNumber);
   if (found.rows.length > 1) {
-    writeSynchronizationCheck_(spreadsheet, '注文番号重複', orderNumber, 'リサーチ管理表に同じ注文番号が複数あるため、自動更新を保留します。');
+    writeSynchronizationCheck_(spreadsheet, '\u6CE8\u6587\u756A\u53F7\u91CD\u8907', orderNumber, '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u306B\u540C\u3058\u6CE8\u6587\u756A\u53F7\u304C\u8907\u6570\u3042\u308B\u305F\u3081\u3001\u81EA\u52D5\u66F4\u65B0\u3092\u4FDD\u7559\u3057\u307E\u3059\u3002');
     return 0;
   }
   return found.rows[0] || 0;
@@ -1771,15 +1771,15 @@ function researchResultColumn_(columns, siteName) {
   const aliases = {
     Amazon: 'Amazon',
     Yahoo: 'Yahoo',
-    'ヤフオク': 'Yahoo',
+    '\u30E4\u30D5\u30AA\u30AF': 'Yahoo',
     Mercari: 'Mercari',
-    'メルカリ': 'Mercari',
+    '\u30E1\u30EB\u30AB\u30EA': 'Mercari',
     Jimoty: 'Jimoty',
-    'ジモティ': 'Jimoty',
+    '\u30B8\u30E2\u30C6\u30A3': 'Jimoty',
     Rakuten: 'Rakuten',
-    '楽天市場': 'Rakuten',
+    '\u697D\u5929\u5E02\u5834': 'Rakuten',
     Other: 'Other',
-    'その他サイト': 'Other',
+    '\u305D\u306E\u4ED6\u30B5\u30A4\u30C8': 'Other',
   };
   return columns[aliases[siteName] || siteName] || 0;
 }
@@ -1789,7 +1789,7 @@ function appendUrlToResearchManagementSheet(orderNumber, siteName, resultText) {
   const found = findResearchManagementRowsByOrderNumber_(spreadsheet, orderNumber);
   if (!found.sheet || found.rows.length !== 1) {
     if (found.rows.length > 1) {
-      writeSynchronizationCheck_(spreadsheet, '注文番号重複', orderNumber, 'リサーチ管理表に同じ注文番号が複数あるため、候補URLを追記しませんでした。');
+      writeSynchronizationCheck_(spreadsheet, '\u6CE8\u6587\u756A\u53F7\u91CD\u8907', orderNumber, '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u306B\u540C\u3058\u6CE8\u6587\u756A\u53F7\u304C\u8907\u6570\u3042\u308B\u305F\u3081\u3001\u5019\u88DCURL\u3092\u8FFD\u8A18\u3057\u307E\u305B\u3093\u3067\u3057\u305F\u3002');
     }
     return 0;
   }
@@ -1844,7 +1844,7 @@ function writeResearchManagementCheckMemo(orderNumber, memo) {
   const spreadsheet = getTargetSpreadsheet_();
   const found = findResearchManagementRowsByOrderNumber_(spreadsheet, orderNumber);
   if (!found.sheet || found.rows.length !== 1 || !found.columns.memo) {
-    writeSynchronizationCheck_(spreadsheet, '要確認', orderNumber, memo);
+    writeSynchronizationCheck_(spreadsheet, '\u8981\u78BA\u8A8D', orderNumber, memo);
     return false;
   }
   return appendUniqueMemo_(found.sheet, found.rows[0], found.columns.memo, memo);
@@ -1858,7 +1858,7 @@ function updateResearchManagementRowByOrderNumber(orderNumber, resultInfo, conte
   }
   if (found.rows.length !== 1) {
     if (found.rows.length > 1) {
-      writeSynchronizationCheck_(spreadsheet, '注文番号重複', orderNumber, 'リサーチ管理表に同じ注文番号が複数あるため、結果同期を保留します。');
+      writeSynchronizationCheck_(spreadsheet, '\u6CE8\u6587\u756A\u53F7\u91CD\u8907', orderNumber, '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u306B\u540C\u3058\u6CE8\u6587\u756A\u53F7\u304C\u8907\u6570\u3042\u308B\u305F\u3081\u3001\u7D50\u679C\u540C\u671F\u3092\u4FDD\u7559\u3057\u307E\u3059\u3002');
     }
     return false;
   }
@@ -1883,7 +1883,7 @@ function updateResearchManagementRowByOrderNumber(orderNumber, resultInfo, conte
     if (found.columns.memo) {
       appendUniqueMemo_(found.sheet, rowNumber, found.columns.memo, memo);
     } else {
-      writeSynchronizationCheck_(spreadsheet, '要確認', orderNumber, memo);
+      writeSynchronizationCheck_(spreadsheet, '\u8981\u78BA\u8A8D', orderNumber, memo);
     }
   });
   return true;
@@ -1935,7 +1935,7 @@ function syncResearchManagementOnChange(event) {
     const spreadsheet = getTargetSpreadsheet_();
     const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
     if (typeof enforceProtectedDeletedRows_ === 'function') {
-      enforceProtectedDeletedRows_(spreadsheet, orderSheet, `onChange:${changeType || 'UNKNOWN'} 132行目以降保護`);
+      enforceProtectedDeletedRows_(spreadsheet, orderSheet, `onChange:${changeType || 'UNKNOWN'} 132\u884C\u76EE\u4EE5\u964D\u4FDD\u8B77`);
     }
     if (typeof recordDeletedOrdersSinceLastSnapshot_ === 'function') {
       recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, `onChange:${changeType || 'UNKNOWN'}`);
@@ -1952,7 +1952,7 @@ function researchImportedOrderRowsAfterImport_(spreadsheet, orderNumbers) {
 
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) {
-    Logger.log('別のリサーチ処理が実行中のため、Gmail自動取得直後リサーチを保留しました。');
+    Logger.log('\u5225\u306E\u30EA\u30B5\u30FC\u30C1\u51E6\u7406\u304C\u5B9F\u884C\u4E2D\u306E\u305F\u3081\u3001Gmail\u81EA\u52D5\u53D6\u5F97\u76F4\u5F8C\u30EA\u30B5\u30FC\u30C1\u3092\u4FDD\u7559\u3057\u307E\u3057\u305F\u3002');
     return { synced: 0, processed: 0, added: 0, errors: 0, skipped: uniqueOrderNumbers.length };
   }
 
@@ -2007,7 +2007,7 @@ function researchImportedOrderRowsAfterImportCore_(spreadsheet, orderNumbers) {
     if (matches.length !== 1) {
       skipped += 1;
       if (matches.length > 1) {
-        writeSynchronizationCheck_(spreadsheet, '注文番号重複', orderNumber, 'Gmail自動取得直後リサーチは、同じ注文番号の行が複数あるため保留しました。');
+        writeSynchronizationCheck_(spreadsheet, '\u6CE8\u6587\u756A\u53F7\u91CD\u8907', orderNumber, 'Gmail\u81EA\u52D5\u53D6\u5F97\u76F4\u5F8C\u30EA\u30B5\u30FC\u30C1\u306F\u3001\u540C\u3058\u6CE8\u6587\u756A\u53F7\u306E\u884C\u304C\u8907\u6570\u3042\u308B\u305F\u3081\u4FDD\u7559\u3057\u307E\u3057\u305F\u3002');
       }
       return;
     }
@@ -2015,18 +2015,18 @@ function researchImportedOrderRowsAfterImportCore_(spreadsheet, orderNumbers) {
     const target = matches[0];
     if (!isResearchRowVisibleForAutomation_(sheet, target.rowNumber)) {
       skipped += 1;
-      writeSynchronizationCheck_(spreadsheet, '要確認', orderNumber, 'Gmail自動取得直後リサーチは、対象行が非表示のため保留しました。');
+      writeSynchronizationCheck_(spreadsheet, '\u8981\u78BA\u8A8D', orderNumber, 'Gmail\u81EA\u52D5\u53D6\u5F97\u76F4\u5F8C\u30EA\u30B5\u30FC\u30C1\u306F\u3001\u5BFE\u8C61\u884C\u304C\u975E\u8868\u793A\u306E\u305F\u3081\u4FDD\u7559\u3057\u307E\u3057\u305F\u3002');
       return;
     }
 
     const rowData = buildResearchRowDataFromSheet_(target.rowNumber, target.values, columns, sheet);
     if (!rowData.keywordLines.length || !rowData.maxPrice) {
       setManagedResearchStatusAtColumn_(sheet, target.rowNumber, columns.status, RESEARCH_STATUS.review);
-      writeResearchCheck_(rowData, '入力不足', 'C列の売上金またはD列の検索ワードがありません。', '');
+      writeResearchCheck_(rowData, '\u5165\u529B\u4E0D\u8DB3', 'C\u5217\u306E\u58F2\u4E0A\u91D1\u307E\u305F\u306FD\u5217\u306E\u691C\u7D22\u30EF\u30FC\u30C9\u304C\u3042\u308A\u307E\u305B\u3093\u3002', '');
       syncMainAndResearchManagementAfterResearch(rowData.orderNumber, target.rowNumber, {
         status: RESEARCH_STATUS.review,
         resultsBySite: {},
-        memos: ['C列の売上金またはD列の検索ワードがありません。'],
+        memos: ['C\u5217\u306E\u58F2\u4E0A\u91D1\u307E\u305F\u306FD\u5217\u306E\u691C\u7D22\u30EF\u30FC\u30C9\u304C\u3042\u308A\u307E\u305B\u3093\u3002'],
       }, managementContext);
       processed += 1;
       return;
@@ -2046,7 +2046,7 @@ function researchImportedOrderRowsAfterImportCore_(spreadsheet, orderNumbers) {
       errors += 1;
       const message = String(error && error.message ? error.message : error);
       setManagedResearchStatusAtColumn_(sheet, target.rowNumber, columns.status, RESEARCH_STATUS.error);
-      writeResearchCheck_(rowData, 'エラー', message, '');
+      writeResearchCheck_(rowData, '\u30A8\u30E9\u30FC', message, '');
       syncMainAndResearchManagementAfterResearch(rowData.orderNumber, target.rowNumber, {
         status: RESEARCH_STATUS.error,
         resultsBySite: {},
@@ -2056,7 +2056,7 @@ function researchImportedOrderRowsAfterImportCore_(spreadsheet, orderNumbers) {
     processed += 1;
   });
 
-  Logger.log(`Gmail自動取得直後リサーチ完了: 同期追加 ${syncResult.appended} / 今回処理 ${processed} / 新規URL ${added} / エラー ${errors} / 保留 ${skipped}`);
+  Logger.log(`Gmail\u81EA\u52D5\u53D6\u5F97\u76F4\u5F8C\u30EA\u30B5\u30FC\u30C1\u5B8C\u4E86: \u540C\u671F\u8FFD\u52A0 ${syncResult.appended} / \u4ECA\u56DE\u51E6\u7406 ${processed} / \u65B0\u898FURL ${added} / \u30A8\u30E9\u30FC ${errors} / \u4FDD\u7559 ${skipped}`);
   return { synced: syncResult.appended, processed, added, errors, skipped };
 }
 
@@ -2069,7 +2069,7 @@ function isResearchRowVisibleForAutomation_(sheet, rowNumber) {
 function researchListedItemsHourly() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) {
-    Logger.log('別のリサーチ処理が実行中のため、今回の実行を終了しました。');
+    Logger.log('\u5225\u306E\u30EA\u30B5\u30FC\u30C1\u51E6\u7406\u304C\u5B9F\u884C\u4E2D\u306E\u305F\u3081\u3001\u4ECA\u56DE\u306E\u5B9F\u884C\u3092\u7D42\u4E86\u3057\u307E\u3057\u305F\u3002');
     return;
   }
 
@@ -2109,18 +2109,18 @@ function researchListedItemsHourly() {
       const rowData = buildResearchRowDataFromSheet_(rowNumber, values, columns, sheet);
       if (!rowData.keywordLines.length || !rowData.maxPrice) {
         setManagedResearchStatusAtColumn_(sheet, rowNumber, columns.status, RESEARCH_STATUS.review);
-        writeResearchCheck_(rowData, '入力不足', 'C列の売上金またはD列の検索ワードがありません。', '');
+        writeResearchCheck_(rowData, '\u5165\u529B\u4E0D\u8DB3', 'C\u5217\u306E\u58F2\u4E0A\u91D1\u307E\u305F\u306FD\u5217\u306E\u691C\u7D22\u30EF\u30FC\u30C9\u304C\u3042\u308A\u307E\u305B\u3093\u3002', '');
         syncMainAndResearchManagementAfterResearch(rowData.orderNumber, rowNumber, {
           status: RESEARCH_STATUS.review,
           resultsBySite: {},
-          memos: ['C列の売上金またはD列の検索ワードがありません。'],
+          memos: ['C\u5217\u306E\u58F2\u4E0A\u91D1\u307E\u305F\u306FD\u5217\u306E\u691C\u7D22\u30EF\u30FC\u30C9\u304C\u3042\u308A\u307E\u305B\u3093\u3002'],
         }, managementContext);
         processed += 1;
         continue;
       }
       if (!rowData.orderNumber) {
         setManagedResearchStatusAtColumn_(sheet, rowNumber, columns.status, RESEARCH_STATUS.review);
-        writeResearchCheck_(rowData, '入力不足', 'B列の注文情報から注文番号を取得できません。', '');
+        writeResearchCheck_(rowData, '\u5165\u529B\u4E0D\u8DB3', 'B\u5217\u306E\u6CE8\u6587\u60C5\u5831\u304B\u3089\u6CE8\u6587\u756A\u53F7\u3092\u53D6\u5F97\u3067\u304D\u307E\u305B\u3093\u3002', '');
         processed += 1;
         continue;
       }
@@ -2139,7 +2139,7 @@ function researchListedItemsHourly() {
         errors += 1;
         const message = String(error && error.message ? error.message : error);
         setManagedResearchStatusAtColumn_(sheet, rowNumber, columns.status, RESEARCH_STATUS.error);
-        writeResearchCheck_(rowData, 'エラー', message, '');
+        writeResearchCheck_(rowData, '\u30A8\u30E9\u30FC', message, '');
         syncMainAndResearchManagementAfterResearch(rowData.orderNumber, rowNumber, {
           status: RESEARCH_STATUS.error,
           resultsBySite: {},
@@ -2152,7 +2152,7 @@ function researchListedItemsHourly() {
     if (visibleRows.length) {
       properties.setProperty(cursorKey, String((cursor + processed) % visibleRows.length));
     }
-    Logger.log(`継続リサーチ完了: 表示行 ${visibleRows.length} / 今回処理 ${processed} / 新規URL ${added} / エラー ${errors}`);
+    Logger.log(`\u7D99\u7D9A\u30EA\u30B5\u30FC\u30C1\u5B8C\u4E86: \u8868\u793A\u884C ${visibleRows.length} / \u4ECA\u56DE\u51E6\u7406 ${processed} / \u65B0\u898FURL ${added} / \u30A8\u30E9\u30FC ${errors}`);
   } finally {
     lock.releaseLock();
   }
@@ -2160,7 +2160,7 @@ function researchListedItemsHourly() {
 
 function researchAllVisibleManagementRowsNow() {
   PropertiesService.getScriptProperties().setProperty('managementResearchVisibleRowCursor', '0');
-  Logger.log('リサーチ管理表の表示中の全行を、現在の実行で先頭からリサーチします。');
+  Logger.log('\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u306E\u8868\u793A\u4E2D\u306E\u5168\u884C\u3092\u3001\u73FE\u5728\u306E\u5B9F\u884C\u3067\u5148\u982D\u304B\u3089\u30EA\u30B5\u30FC\u30C1\u3057\u307E\u3059\u3002');
   return researchListedItemsHourly();
 }
 
@@ -2204,11 +2204,11 @@ function rotateRows_(rows, cursor) {
 
 function buildResearchRowData_(rowNumber, values) {
   const orderInfo = String(values[1] || '');
-  const sku = ((orderInfo.match(/SKU\s*[:：]\s*([^\n]+)/i) || [])[1] || '').trim();
-  const productName = ((orderInfo.match(/商品名\s*[:：]\s*([^\n]+)/) || [])[1] || '').trim();
+  const sku = ((orderInfo.match(/SKU\s*[:\uFF1A]\s*([^\n]+)/i) || [])[1] || '').trim();
+  const productName = ((orderInfo.match(/\u5546\u54C1\u540D\s*[:\uFF1A]\s*([^\n]+)/) || [])[1] || '').trim();
   const keywordLines = String(values[3] || '')
     .split('\n')
-    .map((line) => line.replace(/^【\d+】\s*/, '').trim())
+    .map((line) => line.replace(/^\u3010\d+\u3011\s*/, '').trim())
     .filter(Boolean);
   return {
     row: rowNumber,
@@ -2265,15 +2265,15 @@ function researchOneOrder(rowData) {
   if (!isResearchManagementSheet_(rowData.sheet)) {
     writeResearchCheck_(
       rowData,
-      '書き込み先不一致',
-      `候補URLの追記先は${RESEARCH_AUTOMATION_CONFIG.sheetName}のみに限定しています。`,
+      '\u66F8\u304D\u8FBC\u307F\u5148\u4E0D\u4E00\u81F4',
+      `\u5019\u88DCURL\u306E\u8FFD\u8A18\u5148\u306F${RESEARCH_AUTOMATION_CONFIG.sheetName}\u306E\u307F\u306B\u9650\u5B9A\u3057\u3066\u3044\u307E\u3059\u3002`,
       '',
     );
     return {
       added: 0,
       needsReview: true,
       resultsBySite: {},
-      memos: ['候補URLの追記先がリサーチ管理表ではないため追記を停止しました。'],
+      memos: ['\u5019\u88DCURL\u306E\u8FFD\u8A18\u5148\u304C\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u3067\u306F\u306A\u3044\u305F\u3081\u8FFD\u8A18\u3092\u505C\u6B62\u3057\u307E\u3057\u305F\u3002'],
     };
   }
   let added = 0;
@@ -2301,19 +2301,19 @@ function researchOneOrder(rowData) {
     const unknownShipping = accepted.find((item) => !item.shippingKnown);
     if (addedForSite > 0 && unknownShipping) {
       needsReview = true;
-      memos.push(`${site.label}: 送料要確認 ${unknownShipping.url}`);
-      writeResearchCheck_(rowData, '要確認', `${site.label}: 送料不明のため商品価格だけで仮判定しました。`, unknownShipping.url);
+      memos.push(`${site.label}: \u9001\u6599\u8981\u78BA\u8A8D ${unknownShipping.url}`);
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u9001\u6599\u4E0D\u660E\u306E\u305F\u3081\u5546\u54C1\u4FA1\u683C\u3060\u3051\u3067\u4EEE\u5224\u5B9A\u3057\u307E\u3057\u305F\u3002`, unknownShipping.url);
     }
     const unknownCondition = accepted.find((item) => isUnknownResearchCondition_(item.condition));
     if (addedForSite > 0 && unknownCondition) {
       needsReview = true;
-      memos.push(`${site.label}: 状態要確認 ${unknownCondition.url}`);
-      writeResearchCheck_(rowData, '要確認', `${site.label}: 検索結果で状態を自動判定できないため、候補URLで状態確認が必要です。`, unknownCondition.url);
+      memos.push(`${site.label}: \u72B6\u614B\u8981\u78BA\u8A8D ${unknownCondition.url}`);
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u691C\u7D22\u7D50\u679C\u3067\u72B6\u614B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u305F\u3081\u3001\u5019\u88DCURL\u3067\u72B6\u614B\u78BA\u8A8D\u304C\u5FC5\u8981\u3067\u3059\u3002`, unknownCondition.url);
     }
     if (addedForSite === 0 && (!siteResult.ok || siteResult.rejectedForMissingData > 0)) {
       needsReview = true;
-      memos.push(`${site.label}: 自動判定不可 手動確認URL ${siteResult.manualUrl}`);
-      writeResearchCheck_(rowData, '要確認', `${site.label}: 価格・送料・状態のいずれかを自動判定できない候補、または取得制限があります。条件合格候補としては追記していません。`, siteResult.manualUrl);
+      memos.push(`${site.label}: \u81EA\u52D5\u5224\u5B9A\u4E0D\u53EF \u624B\u52D5\u78BA\u8A8DURL ${siteResult.manualUrl}`);
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u4FA1\u683C\u30FB\u9001\u6599\u30FB\u72B6\u614B\u306E\u3044\u305A\u308C\u304B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u5019\u88DC\u3001\u307E\u305F\u306F\u53D6\u5F97\u5236\u9650\u304C\u3042\u308A\u307E\u3059\u3002\u6761\u4EF6\u5408\u683C\u5019\u88DC\u3068\u3057\u3066\u306F\u8FFD\u8A18\u3057\u3066\u3044\u307E\u305B\u3093\u3002`, siteResult.manualUrl);
     }
   });
 
@@ -2327,8 +2327,8 @@ function researchOneOrder(rowData) {
     accepted.forEach((item) => otherItems.push(item));
     if (!accepted.length && (!siteResult.ok || siteResult.rejectedForMissingData > 0)) {
       needsReview = true;
-      memos.push(`${site.label}: 自動判定不可 手動確認URL ${siteResult.manualUrl}`);
-      writeResearchCheck_(rowData, '要確認', `${site.label}: 価格・送料・状態のいずれかを自動判定できない候補、または取得制限があります。条件合格候補としては追記していません。`, siteResult.manualUrl);
+      memos.push(`${site.label}: \u81EA\u52D5\u5224\u5B9A\u4E0D\u53EF \u624B\u52D5\u78BA\u8A8DURL ${siteResult.manualUrl}`);
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u4FA1\u683C\u30FB\u9001\u6599\u30FB\u72B6\u614B\u306E\u3044\u305A\u308C\u304B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u5019\u88DC\u3001\u307E\u305F\u306F\u53D6\u5F97\u5236\u9650\u304C\u3042\u308A\u307E\u3059\u3002\u6761\u4EF6\u5408\u683C\u5019\u88DC\u3068\u3057\u3066\u306F\u8FFD\u8A18\u3057\u3066\u3044\u307E\u305B\u3093\u3002`, siteResult.manualUrl);
     }
   });
   resultsBySite.Other = otherItems.map((item) => formatResearchResult_(item, true));
@@ -2342,22 +2342,22 @@ function researchOneOrder(rowData) {
   const unknownOtherShipping = otherItems.find((item) => !item.shippingKnown);
   if (addedOther > 0 && unknownOtherShipping) {
     needsReview = true;
-    memos.push(`${unknownOtherShipping.siteLabel || unknownOtherShipping.site}: 送料要確認 ${unknownOtherShipping.url}`);
+    memos.push(`${unknownOtherShipping.siteLabel || unknownOtherShipping.site}: \u9001\u6599\u8981\u78BA\u8A8D ${unknownOtherShipping.url}`);
     writeResearchCheck_(
       rowData,
-      '要確認',
-      `${unknownOtherShipping.siteLabel || unknownOtherShipping.site}: 送料不明のため商品価格だけで仮判定しました。`,
+      '\u8981\u78BA\u8A8D',
+      `${unknownOtherShipping.siteLabel || unknownOtherShipping.site}: \u9001\u6599\u4E0D\u660E\u306E\u305F\u3081\u5546\u54C1\u4FA1\u683C\u3060\u3051\u3067\u4EEE\u5224\u5B9A\u3057\u307E\u3057\u305F\u3002`,
       unknownOtherShipping.url,
     );
   }
   const unknownOtherCondition = otherItems.find((item) => isUnknownResearchCondition_(item.condition));
   if (addedOther > 0 && unknownOtherCondition) {
     needsReview = true;
-    memos.push(`${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: 状態要確認 ${unknownOtherCondition.url}`);
+    memos.push(`${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: \u72B6\u614B\u8981\u78BA\u8A8D ${unknownOtherCondition.url}`);
     writeResearchCheck_(
       rowData,
-      '要確認',
-      `${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: 検索結果で状態を自動判定できないため、候補URLで状態確認が必要です。`,
+      '\u8981\u78BA\u8A8D',
+      `${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: \u691C\u7D22\u7D50\u679C\u3067\u72B6\u614B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u305F\u3081\u3001\u5019\u88DCURL\u3067\u72B6\u614B\u78BA\u8A8D\u304C\u5FC5\u8981\u3067\u3059\u3002`,
       unknownOtherCondition.url,
     );
   }
@@ -2541,8 +2541,8 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
     if (!isAllowedSiteCondition_(siteName, item.condition, text, rowData.newOnly)) {
       return false;
     }
-    // 指示書16・31: 送料不明時は商品価格だけで仮判定し、
-    // 出力側で「送料要確認」を明記する。
+    // \u6307\u793A\u66F816\u30FB31: \u9001\u6599\u4E0D\u660E\u6642\u306F\u5546\u54C1\u4FA1\u683C\u3060\u3051\u3067\u4EEE\u5224\u5B9A\u3057\u3001
+    // \u51FA\u529B\u5074\u3067\u300C\u9001\u6599\u8981\u78BA\u8A8D\u300D\u3092\u660E\u8A18\u3059\u308B\u3002
     const total = Number(item.price) + (item.shippingKnown ? Number(item.shipping || 0) : 0);
     return total <= Number(maxPrice);
   });
@@ -2561,8 +2561,8 @@ function isAllowedSiteCondition_(siteName, condition, text, newOnly) {
     return true;
   }
   if (siteName === 'Jimoty') {
-    // 指示書19: ジモティはジャンク等の除外語がなければ候補化できる。
-    // ジャンク・販売終了の判定は呼び出し元で先に実施済み。
+    // \u6307\u793A\u66F819: \u30B8\u30E2\u30C6\u30A3\u306F\u30B8\u30E3\u30F3\u30AF\u7B49\u306E\u9664\u5916\u8A9E\u304C\u306A\u3051\u308C\u3070\u5019\u88DC\u5316\u3067\u304D\u308B\u3002
+    // \u30B8\u30E3\u30F3\u30AF\u30FB\u8CA9\u58F2\u7D42\u4E86\u306E\u5224\u5B9A\u306F\u547C\u3073\u51FA\u3057\u5143\u3067\u5148\u306B\u5B9F\u65BD\u6E08\u307F\u3002
     return true;
   }
   if (siteName === 'Rakuten') {
@@ -2576,12 +2576,12 @@ function isCompleteDvdCandidate_(text, expectedVolume) {
     return true;
   }
   const half = toHalfWidthNumber_(String(text || ''));
-  return new RegExp(`全\\s*${expectedVolume}\\s*巻|${expectedVolume}\\s*巻\\s*セット|全巻`).test(half);
+  return new RegExp(`\u5168\\s*${expectedVolume}\\s*\u5DFB|${expectedVolume}\\s*\u5DFB\\s*\u30BB\u30C3\u30C8|\u5168\u5DFB`).test(half);
 }
 
 function expectedVolumeCount_(text) {
   const half = toHalfWidthNumber_(String(text || ''));
-  const match = half.match(/全\s*([0-9]+)\s*巻|([0-9]+)\s*巻\s*セット/);
+  const match = half.match(/\u5168\s*([0-9]+)\s*\u5DFB|([0-9]+)\s*\u5DFB\s*\u30BB\u30C3\u30C8/);
   return Number((match && (match[1] || match[2])) || 0);
 }
 
@@ -2590,7 +2590,7 @@ function buildAmazonAsinResearchLines_(rowData) {
   if (!asin) {
     return [];
   }
-  return [`ASIN確認URL ${asin}\nhttps://www.amazon.co.jp/dp/${asin}`];
+  return [`ASIN\u78BA\u8A8DURL ${asin}\nhttps://www.amazon.co.jp/dp/${asin}`];
 }
 
 function extractAmazonAsinFromResearchRow_(rowData) {
@@ -2600,7 +2600,7 @@ function extractAmazonAsinFromResearchRow_(rowData) {
     rowData && rowData.productName,
   ].filter(Boolean).join('\n');
   const patterns = [
-    /\bASIN\s*[:：]\s*([A-Z0-9]{10})\b/i,
+    /\bASIN\s*[:\uFF1A]\s*([A-Z0-9]{10})\b/i,
     /\/(?:dp|gp\/product)\/([A-Z0-9]{10})\b/i,
     /(?:^|[^A-Z0-9])(B[0-9A-Z]{9})(?=$|[^A-Z0-9])/i,
   ];
@@ -2656,7 +2656,7 @@ function splitResearchResultBlocks_(text) {
 }
 
 function appendUrlToMainSheet_(rowNumber, columnNumber, resultLines) {
-  Logger.log(`候補URLの追記先は${RESEARCH_AUTOMATION_CONFIG.sheetName}のみに限定しているため、メインシートへの追記はスキップしました。`);
+  Logger.log(`\u5019\u88DCURL\u306E\u8FFD\u8A18\u5148\u306F${RESEARCH_AUTOMATION_CONFIG.sheetName}\u306E\u307F\u306B\u9650\u5B9A\u3057\u3066\u3044\u308B\u305F\u3081\u3001\u30E1\u30A4\u30F3\u30B7\u30FC\u30C8\u3078\u306E\u8FFD\u8A18\u306F\u30B9\u30AD\u30C3\u30D7\u3057\u307E\u3057\u305F\u3002`);
   return 0;
 }
 
@@ -2679,11 +2679,11 @@ function extractUrls_(text) {
 
 function parseResearchLineForComparison_(line) {
   const text = String(line || '');
-  const priceParts = text.match(/([0-9０-９,，]+)\s*円/g) || [];
+  const priceParts = text.match(/([0-9\uFF10-\uFF19,\uFF0C]+)\s*\u5186/g) || [];
   const prices = priceParts
     .map((part) => Number(toHalfWidthNumber_(part).replace(/[^\d]/g, '')))
     .filter((price) => price > 0);
-  const shippingKnown = /送料要確認/.test(text) ? false : prices.length > 1 || /送料無料/.test(text);
+  const shippingKnown = /\u9001\u6599\u8981\u78BA\u8A8D/.test(text) ? false : prices.length > 1 || /\u9001\u6599\u7121\u6599/.test(text);
   const price = prices.length
     ? prices[0] + (shippingKnown && prices.length > 1 ? prices[1] : 0)
     : 0;
@@ -2696,25 +2696,25 @@ function parseResearchLineForComparison_(line) {
 
 function researchConditionRank_(text) {
   const value = String(text || '');
-  if (/ほぼ新品|未使用に近い/i.test(value)) {
+  if (/\u307B\u307C\u65B0\u54C1|\u672A\u4F7F\u7528\u306B\u8FD1\u3044/i.test(value)) {
     return 90;
   }
-  if (/新品|未使用品|未使用|brand\s*new|new\b/i.test(value)) {
+  if (/\u65B0\u54C1|\u672A\u4F7F\u7528\u54C1|\u672A\u4F7F\u7528|brand\s*new|new\b/i.test(value)) {
     return 100;
   }
-  if (/非常に良い|目立った傷や汚れなし/i.test(value)) {
+  if (/\u975E\u5E38\u306B\u826F\u3044|\u76EE\u7ACB\u3063\u305F\u50B7\u3084\u6C5A\u308C\u306A\u3057/i.test(value)) {
     return 80;
   }
-  if (/良い|やや傷や汚れあり/i.test(value)) {
+  if (/\u826F\u3044|\u3084\u3084\u50B7\u3084\u6C5A\u308C\u3042\u308A/i.test(value)) {
     return 60;
   }
-  if (/可|傷や汚れあり/i.test(value)) {
+  if (/\u53EF|\u50B7\u3084\u6C5A\u308C\u3042\u308A/i.test(value)) {
     return 40;
   }
-  if (/中古|使用済|used/i.test(value)) {
+  if (/\u4E2D\u53E4|\u4F7F\u7528\u6E08|used/i.test(value)) {
     return 30;
   }
-  if (/状態要確認|送料要確認/.test(value)) {
+  if (/\u72B6\u614B\u8981\u78BA\u8A8D|\u9001\u6599\u8981\u78BA\u8A8D/.test(value)) {
     return 20;
   }
   return 0;
@@ -2733,11 +2733,11 @@ function isBetterResearchCandidate_(candidate, existingResults) {
 }
 
 function formatResearchResult_(item, includeSiteName) {
-  const title = shortenResearchTitle_(item.title || item.siteLabel || item.site || '候補');
-  const price = `${Number(item.price).toLocaleString('ja-JP')}円`;
+  const title = shortenResearchTitle_(item.title || item.siteLabel || item.site || '\u5019\u88DC');
+  const price = `${Number(item.price).toLocaleString('ja-JP')}\u5186`;
   const shipping = item.shippingKnown
-    ? (item.shipping ? `+${Number(item.shipping).toLocaleString('ja-JP')}円` : '+送料無料')
-    : ' 送料要確認';
+    ? (item.shipping ? `+${Number(item.shipping).toLocaleString('ja-JP')}\u5186` : '+\u9001\u6599\u7121\u6599')
+    : ' \u9001\u6599\u8981\u78BA\u8A8D';
   const condition = item.condition ? ` ${item.condition}` : '';
   const prefix = includeSiteName ? `${item.siteLabel || item.site} ` : '';
   return `${prefix}${title}  ${price}${shipping}${condition}\n${item.url}`;
@@ -2746,7 +2746,7 @@ function formatResearchResult_(item, includeSiteName) {
 function shortenResearchTitle_(title) {
   return String(title || '')
     .replace(/\s+/g, ' ')
-    .replace(/\s*[|｜].*$/, '')
+    .replace(/\s*[|\uFF5C].*$/, '')
     .trim()
     .slice(0, 42);
 }
@@ -2830,9 +2830,9 @@ function priceNear_(html) {
     }
   }
   const textPatterns = [
-    /(?:販売価格|商品価格|現在価格|即決価格|価格)\s*[:：]?\s*[￥¥]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*円?/i,
-    /[￥¥]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})(?:\s*円)?/i,
-    /([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*円/i,
+    /(?:\u8CA9\u58F2\u4FA1\u683C|\u5546\u54C1\u4FA1\u683C|\u73FE\u5728\u4FA1\u683C|\u5373\u6C7A\u4FA1\u683C|\u4FA1\u683C)\s*[:\uFF1A]?\s*[\uFFE5\u00A5]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*\u5186?/i,
+    /[\uFFE5\u00A5]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})(?:\s*\u5186)?/i,
+    /([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*\u5186/i,
   ];
   for (let index = 0; index < textPatterns.length; index += 1) {
     const match = text.match(textPatterns[index]);
@@ -2845,10 +2845,10 @@ function priceNear_(html) {
 
 function shippingNear_(html) {
   const text = stripResearchHtml_(html);
-  if (/送料無料|送料\s*(?:は)?\s*0\s*円|配送料無料/.test(text)) {
+  if (/\u9001\u6599\u7121\u6599|\u9001\u6599\s*(?:\u306F)?\s*0\s*\u5186|\u914D\u9001\u6599\u7121\u6599/.test(text)) {
     return { known: true, amount: 0 };
   }
-  const match = text.match(/(?:送料|配送料)[^\d]{0,15}([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,6})\s*円/);
+  const match = text.match(/(?:\u9001\u6599|\u914D\u9001\u6599)[^\d]{0,15}([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,6})\s*\u5186/);
   return match
     ? { known: true, amount: Number(match[1].replace(/,/g, '')) || 0 }
     : { known: false, amount: 0 };
@@ -2857,9 +2857,9 @@ function shippingNear_(html) {
 function conditionNear_(html, siteName) {
   const text = stripResearchHtml_(html);
   const patterns = [
-    /中古品?\s*[-－]?\s*(?:ほぼ新品|非常に良い|良い|可)/,
-    /未使用に近い|目立った傷や汚れなし|やや傷や汚れあり|傷や汚れあり/,
-    /新品未使用|新品|未開封|中古[ABC]?|状態要確認/,
+    /\u4E2D\u53E4\u54C1?\s*[-\uFF0D]?\s*(?:\u307B\u307C\u65B0\u54C1|\u975E\u5E38\u306B\u826F\u3044|\u826F\u3044|\u53EF)/,
+    /\u672A\u4F7F\u7528\u306B\u8FD1\u3044|\u76EE\u7ACB\u3063\u305F\u50B7\u3084\u6C5A\u308C\u306A\u3057|\u3084\u3084\u50B7\u3084\u6C5A\u308C\u3042\u308A|\u50B7\u3084\u6C5A\u308C\u3042\u308A/,
+    /\u65B0\u54C1\u672A\u4F7F\u7528|\u65B0\u54C1|\u672A\u958B\u5C01|\u4E2D\u53E4[ABC]?|\u72B6\u614B\u8981\u78BA\u8A8D/,
   ];
   for (let index = 0; index < patterns.length; index += 1) {
     const match = text.match(patterns[index]);
@@ -2867,11 +2867,11 @@ function conditionNear_(html, siteName) {
       return match[0];
     }
   }
-  return siteName === 'Rakuten' ? '' : '状態要確認';
+  return siteName === 'Rakuten' ? '' : '\u72B6\u614B\u8981\u78BA\u8A8D';
 }
 
 function isUnknownResearchCondition_(condition) {
-  return /状態要確認/.test(String(condition || ''));
+  return /\u72B6\u614B\u8981\u78BA\u8A8D/.test(String(condition || ''));
 }
 
 function matchesResearchKeyword_(title, keyword) {
@@ -2881,15 +2881,15 @@ function matchesResearchKeyword_(title, keyword) {
   if (modelTokens.length) {
     return modelTokens.some((token) => normalizedTitle.indexOf(token) >= 0);
   }
-  const tokens = normalizedKeyword.split(/\s+/).filter((token) => token.length >= 2 && !/^(全|全巻|レンタル)$/.test(token));
+  const tokens = normalizedKeyword.split(/\s+/).filter((token) => token.length >= 2 && !/^(\u5168|\u5168\u5DFB|\u30EC\u30F3\u30BF\u30EB)$/.test(token));
   return tokens.length ? tokens.filter((token) => normalizedTitle.indexOf(token) >= 0).length >= Math.ceil(tokens.length / 2) : false;
 }
 
 function normalizeResearchText_(value) {
   return toHalfWidthNumber_(String(value || ''))
     .toLowerCase()
-    .replace(/[Ａ-Ｚａ-ｚ]/g, (character) => String.fromCharCode(character.charCodeAt(0) - 0xfee0))
-    .replace(/[^a-z0-9一-龠ぁ-んァ-ヶー-]+/g, ' ')
+    .replace(/[\uFF21-\uFF3A\uFF41-\uFF5A]/g, (character) => String.fromCharCode(character.charCodeAt(0) - 0xfee0))
+    .replace(/[^a-z0-9\u4E00-\u9FA0\u3041-\u3093\u30A1-\u30F6\u30FC-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -2929,6 +2929,6 @@ function writeResearchCheck_(rowData, type, message, manualUrl) {
     productName,
     rowData.keywordLines.join('\n'),
     manualUrl || '',
-    rowData.newOnly ? 'SKUにmuzaを含むため新品限定' : '',
+    rowData.newOnly ? 'SKU\u306Bmuza\u3092\u542B\u3080\u305F\u3081\u65B0\u54C1\u9650\u5B9A' : '',
   ]);
 }
