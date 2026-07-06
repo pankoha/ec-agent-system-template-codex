@@ -61,6 +61,7 @@ function onOpen() {
     .addItem('\u78BA\u8A8D\u7528\u304B\u3089Gmail\u518D\u51E6\u7406', 'reprocessReviewRowsFromGmail')
     .addSeparator()
     .addItem('\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u3092\u540C\u671F', 'syncResearchManagementSheet')
+    .addItem('Gmail\u53D6\u8FBC\u8A3A\u65AD', 'debugAmazonOrderImportStatus')
     .addItem('\u65E7\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u30B7\u30FC\u30C8\u3092\u524A\u9664', 'deleteLegacyResearchManagementSheet')
     .addItem('\u30EA\u30B5\u30FC\u30C1\u3092\u624B\u52D5\u5B9F\u884C', 'researchAllVisibleManagementRowsNow')
     .addItem('\u8868\u793A\u4E2D\u306E\u5168\u884C\u3092\u4ECA\u3059\u3050\u30EA\u30B5\u30FC\u30C1', 'researchAllVisibleManagementRowsNow')
@@ -450,6 +451,61 @@ function importAmazonOrderEmails() {
   Logger.log(`\u8FFD\u52A0: ${rowsToAppend.length}\u4EF6 / \u78BA\u8A8D\u7528: ${reviewRows.length}\u4EF6`);
 }
 
+function debugAmazonOrderImportStatus() {
+  const spreadsheet = getTargetSpreadsheet_();
+  const orderSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const reviewSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
+  const query = buildAmazonOrderGmailQuery_();
+  const threads = GmailApp.search(query, 0, 20);
+  let messageCount = 0;
+  let targetMessageCount = 0;
+  let parsedOkCount = 0;
+  let duplicateOrDeletedCount = 0;
+  const sampleOrderNumbers = [];
+  const existingOrders = orderSheet ? loadExistingOrders_(orderSheet) : { orderNumbers: new Set(), deletedOrderNumbers: new Set() };
+
+  threads.forEach((thread) => {
+    thread.getMessages().forEach((message) => {
+      messageCount += 1;
+      if (!isTargetMessage_(message)) {
+        return;
+      }
+      targetMessageCount += 1;
+      const result = parseAmazonOrderEmail_(getMessageText_(message));
+      if (!result.ok) {
+        return;
+      }
+      parsedOkCount += 1;
+      const orderNumber = result.fields.orderNumber;
+      if (orderNumber && sampleOrderNumbers.length < 5) {
+        sampleOrderNumbers.push(orderNumber);
+      }
+      if (
+        existingOrders.orderNumbers.has(orderNumber)
+        || existingOrders.deletedOrderNumbers.has(orderNumber)
+      ) {
+        duplicateOrDeletedCount += 1;
+      }
+    });
+  });
+
+  const report = [
+    'Amazon\u6CE8\u6587\u30E1\u30FC\u30EB\u53D6\u8FBC \u8A3A\u65AD',
+    `Spreadsheet ID: ${spreadsheet.getId()}`,
+    `\u6CE8\u6587\u30B7\u30FC\u30C8: ${orderSheet ? `\u3042\u308A / \u6700\u7D42\u884C ${orderSheet.getLastRow()}` : '\u306A\u3057'}`,
+    `\u78BA\u8A8D\u7528\u30B7\u30FC\u30C8: ${reviewSheet ? `\u3042\u308A / \u6700\u7D42\u884C ${reviewSheet.getLastRow()}` : '\u306A\u3057'}`,
+    `Gmail\u691C\u7D22\u30AF\u30A8\u30EA: ${query}`,
+    `\u691C\u7D22\u30B9\u30EC\u30C3\u30C9\u6570: ${threads.length}`,
+    `\u691C\u7D22\u30E1\u30C3\u30BB\u30FC\u30B8\u6570: ${messageCount}`,
+    `\u5BFE\u8C61\u30E1\u30C3\u30BB\u30FC\u30B8\u6570: ${targetMessageCount}`,
+    `\u89E3\u6790\u6210\u529F\u6570: ${parsedOkCount}`,
+    `\u65E2\u5B58\u307E\u305F\u306F\u524A\u9664\u6E08\u307F\u3067\u8FFD\u52A0\u5BFE\u8C61\u5916: ${duplicateOrDeletedCount}`,
+    `\u30B5\u30F3\u30D7\u30EB\u6CE8\u6587\u756A\u53F7: ${sampleOrderNumbers.join(', ') || '\u306A\u3057'}`,
+  ];
+  Logger.log(report.join('\n'));
+  return report.join('\n');
+}
+
 function buildAmazonOrderGmailQuery_() {
   const keywords = (AMAZON_ORDER_IMPORTER_CONFIG.targetTextKeywords || [AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword])
     .map((keyword) => `"${keyword}"`)
@@ -675,11 +731,48 @@ function buildDvdSearchWords_(productName) {
     return '';
   }
 
+  if (!isCompleteDvdSetProduct_(productName, volume)) {
+    const broadTitle = cleanSingleDvdTitle_(title);
+    const keywordTitle = broadTitle || title;
+    return uniqueLines_([
+      keywordTitle,
+      `${keywordTitle} \u30EC\u30F3\u30BF\u30EB`,
+      `${keywordTitle} DVD`,
+      `${keywordTitle} \u4E2D\u53E4`,
+      broadTitle && broadTitle !== title ? title : '',
+    ]).join('\n');
+  }
+
   return [
     `${title} \u5168`,
     volume ? `${title} ${volume}` : `${title} \u5168\u5DFB`,
     `${title} \u30EC\u30F3\u30BF\u30EB`,
   ].join('\n');
+}
+
+function isCompleteDvdSetProduct_(productName, volume) {
+  return Boolean(volume) || /\u5168\u5DFB\u30BB\u30C3\u30C8|\u5168\s*[0-9\uFF10-\uFF19]+\s*\u5DFB|\u5168\u5DFB|\u30B3\u30F3\u30D7\u30EA\u30FC\u30C8|complete\s*(?:box|set)?/i.test(String(productName || ''));
+}
+
+function cleanSingleDvdTitle_(title) {
+  return String(title || '')
+    .replace(/\[[^\]]+\]/g, ' ')
+    .replace(/[\uFF08(][^)\uFF09]*(?:\u5E74|\u7248|\u5B57\u5E55|\u5439\u66FF|\u65E5\u672C\u8A9E|\u82F1\u8A9E|20[0-9]{2}|19[0-9]{2})[^)\uFF09]*[)\uFF09]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function uniqueLines_(lines) {
+  const seen = {};
+  return (lines || [])
+    .map((line) => String(line || '').trim())
+    .filter((line) => {
+      if (!line || seen[line]) {
+        return false;
+      }
+      seen[line] = true;
+      return true;
+    });
 }
 
 function cleanDvdTitle_(productName) {
@@ -1020,6 +1113,22 @@ function recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, reason) 
   return recorded;
 }
 
+function deleteKnownDeletedOrderRows_(spreadsheet, orderSheet) {
+  const deletedOrderNumbers = loadDeletedOrderNumbers_(spreadsheet);
+  if (!deletedOrderNumbers.size || orderSheet.getLastRow() < 2) {
+    updateKnownOrderSnapshot_(orderSheet);
+    return 0;
+  }
+
+  const rowsToDelete = getOrderNumberRecordsFromOrderSheet_(orderSheet)
+    .filter((record) => deletedOrderNumbers.has(record.orderNumber))
+    .map((record) => record.rowNumber)
+    .sort((left, right) => right - left);
+  Array.from(new Set(rowsToDelete)).forEach((rowNumber) => orderSheet.deleteRow(rowNumber));
+  updateKnownOrderSnapshot_(orderSheet);
+  return rowsToDelete.length;
+}
+
 function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
   if (!AMAZON_ORDER_IMPORTER_CONFIG.autoDeleteProtectedRows) {
     return 0;
@@ -1036,7 +1145,7 @@ function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
     properties.setProperty(cleanupKey, 'true');
     return deleted;
   }
-  return deleteKnownDeletedRowsFromProtectedStart_(spreadsheet, orderSheet);
+  return deleteKnownDeletedOrderRows_(spreadsheet, orderSheet);
 }
 
 function deleteKnownDeletedRowsFromProtectedStart_(spreadsheet, orderSheet) {
@@ -1404,6 +1513,14 @@ function syncResearchManagementByOrderNumber() {
 function syncResearchManagementByOrderNumber_(spreadsheet) {
   deleteUnusedLegacyResearchManagementSheets_(spreadsheet);
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const canUseDeletedOrderRegistry = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.deletedOrderSheetName)
+    || typeof spreadsheet.insertSheet === 'function';
+  if (canUseDeletedOrderRegistry && typeof deleteKnownDeletedOrderRows_ === 'function') {
+    deleteKnownDeletedOrderRows_(spreadsheet, orderSheet);
+  }
+  const deletedOrderNumbers = canUseDeletedOrderRegistry && typeof loadDeletedOrderNumbers_ === 'function'
+    ? loadDeletedOrderNumbers_(spreadsheet)
+    : new Set();
   const researchSheet = spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName);
   if (!researchSheet || (typeof researchSheet.isSheetHidden === 'function' && researchSheet.isSheetHidden())) {
     writeSynchronizationCheck_(
@@ -1429,6 +1546,9 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
         if (row.some((value) => String(value || '').trim())) {
           unresolvedMainOrderRows += 1;
         }
+        return;
+      }
+      if (deletedOrderNumbers.has(orderNumber)) {
         return;
       }
       if (!mainOrders.has(orderNumber)) {
@@ -1464,10 +1584,23 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
   }
 
   const rowsToDelete = [];
+  const deletedRecordsFromManagement = [];
   managementOrders.forEach((rows, orderNumber) => {
+    if (deletedOrderNumbers.has(orderNumber)) {
+      rows.forEach((rowNumber) => rowsToDelete.push(rowNumber));
+      return;
+    }
     if (!mainOrders.has(orderNumber)) {
       if (!unresolvedMainOrderRows) {
-        rows.forEach((rowNumber) => rowsToDelete.push(rowNumber));
+        rows.forEach((rowNumber) => {
+          rowsToDelete.push(rowNumber);
+          const row = researchValues[rowNumber - 2] || [];
+          deletedRecordsFromManagement.push({
+            orderNumber,
+            rowNumber,
+            orderInfo: mappedValue_(row, researchColumns.orderInfo),
+          });
+        });
       }
       return;
     }
@@ -1535,6 +1668,9 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
   });
   if (additions.length) {
     researchSheet.getRange(researchSheet.getLastRow() + 1, 1, additions.length, additions[0].length).setValues(additions).setWrap(true);
+  }
+  if (canUseDeletedOrderRegistry && deletedRecordsFromManagement.length && typeof appendDeletedOrderRecords_ === 'function') {
+    appendDeletedOrderRecords_(spreadsheet, deletedRecordsFromManagement, '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u3068\u306E\u540C\u671F\u3067\u524A\u9664\u691C\u77E5');
   }
   rowsToDelete.sort((left, right) => right - left).forEach((rowNumber) => researchSheet.deleteRow(rowNumber));
   return {
@@ -2106,8 +2242,17 @@ function buildResearchRowDataFromSheet_(rowNumber, values, columns, sheet) {
 function rowHasResearchCandidates_(sheet, rowNumber, columns) {
   return RESEARCH_RESULT_KEYS.some((key) => {
     const columnNumber = columns[key];
-    return columnNumber && String(sheet.getRange(rowNumber, columnNumber).getDisplayValue() || '').trim();
+    return columnNumber && hasConfirmedResearchCandidateText_(sheet.getRange(rowNumber, columnNumber).getDisplayValue());
   });
+}
+
+function hasConfirmedResearchCandidateText_(value) {
+  return String(value || '')
+    .split('\n')
+    .some((line) => {
+      const text = String(line || '').trim();
+      return text && !/^\[SEARCH\]/.test(text);
+    });
 }
 
 function isResearchManagementSheet_(sheet) {
@@ -2139,17 +2284,12 @@ function researchOneOrder(rowData) {
 
   RESEARCH_SITES.forEach((site) => {
     const siteResult = researchSiteForKeywords_(site, rowData);
-    const accepted = filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData);
-    const uniqueItems = accepted.filter((item) => {
-        const canonical = canonicalResearchUrl_(item.url);
-        if (!canonical || seenThisRun.has(canonical)) {
-          return false;
-        }
-        seenThisRun.add(canonical);
-        item.url = canonical;
-        return true;
-      });
-    const lines = uniqueItems.map((item) => formatResearchResult_(item, false));
+    const accepted = uniqueAcceptedResearchItems_(
+      filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData),
+      seenThisRun,
+    );
+    const directAmazonLines = site.key === 'Amazon' ? buildAmazonAsinResearchLines_(rowData) : [];
+    const lines = accepted.map((item) => formatResearchResult_(item, false)).concat(directAmazonLines);
     resultsBySite[site.key] = lines;
     const addedForSite = appendResearchLinesToSheet_(
       rowData.sheet,
@@ -2158,41 +2298,37 @@ function researchOneOrder(rowData) {
       lines,
     );
     added += addedForSite;
-    const unknownShipping = uniqueItems.find((item) => !item.shippingKnown);
+    const unknownShipping = accepted.find((item) => !item.shippingKnown);
     if (addedForSite > 0 && unknownShipping) {
       needsReview = true;
       memos.push(`${site.label}: \u9001\u6599\u8981\u78BA\u8A8D ${unknownShipping.url}`);
-      writeResearchCheck_(
-        rowData,
-        '\u8981\u78BA\u8A8D',
-        `${site.label}: \u9001\u6599\u4E0D\u660E\u306E\u305F\u3081\u5546\u54C1\u4FA1\u683C\u3060\u3051\u3067\u4EEE\u5224\u5B9A\u3057\u307E\u3057\u305F\u3002`,
-        unknownShipping.url,
-      );
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u9001\u6599\u4E0D\u660E\u306E\u305F\u3081\u5546\u54C1\u4FA1\u683C\u3060\u3051\u3067\u4EEE\u5224\u5B9A\u3057\u307E\u3057\u305F\u3002`, unknownShipping.url);
     }
-    if (!siteResult.ok || siteResult.rejectedForMissingData > 0) {
+    const unknownCondition = accepted.find((item) => isUnknownResearchCondition_(item.condition));
+    if (addedForSite > 0 && unknownCondition) {
+      needsReview = true;
+      memos.push(`${site.label}: \u72B6\u614B\u8981\u78BA\u8A8D ${unknownCondition.url}`);
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u691C\u7D22\u7D50\u679C\u3067\u72B6\u614B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u305F\u3081\u3001\u5019\u88DCURL\u3067\u72B6\u614B\u78BA\u8A8D\u304C\u5FC5\u8981\u3067\u3059\u3002`, unknownCondition.url);
+    }
+    if (addedForSite === 0 && (!siteResult.ok || siteResult.rejectedForMissingData > 0)) {
       needsReview = true;
       memos.push(`${site.label}: \u81EA\u52D5\u5224\u5B9A\u4E0D\u53EF \u624B\u52D5\u78BA\u8A8DURL ${siteResult.manualUrl}`);
-      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u5019\u88DC\u307E\u305F\u306F\u53D6\u5F97\u5236\u9650\u304C\u3042\u308A\u307E\u3059\u3002`, siteResult.manualUrl);
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u4FA1\u683C\u30FB\u9001\u6599\u30FB\u72B6\u614B\u306E\u3044\u305A\u308C\u304B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u5019\u88DC\u3001\u307E\u305F\u306F\u53D6\u5F97\u5236\u9650\u304C\u3042\u308A\u307E\u3059\u3002\u6761\u4EF6\u5408\u683C\u5019\u88DC\u3068\u3057\u3066\u306F\u8FFD\u8A18\u3057\u3066\u3044\u307E\u305B\u3093\u3002`, siteResult.manualUrl);
     }
   });
 
   const otherItems = [];
-  [].forEach((site) => {
+  OTHER_RESEARCH_SITES.forEach((site) => {
     const siteResult = researchSiteForKeywords_(site, rowData);
-    const accepted = filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData);
-    accepted.forEach((item) => {
-      const canonical = canonicalResearchUrl_(item.url);
-      if (!canonical || seenThisRun.has(canonical)) {
-        return;
-      }
-      seenThisRun.add(canonical);
-      item.url = canonical;
-      otherItems.push(item);
-    });
-    if (!siteResult.ok || siteResult.rejectedForMissingData > 0) {
+    const accepted = uniqueAcceptedResearchItems_(
+      filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData),
+      seenThisRun,
+    );
+    accepted.forEach((item) => otherItems.push(item));
+    if (!accepted.length && (!siteResult.ok || siteResult.rejectedForMissingData > 0)) {
       needsReview = true;
       memos.push(`${site.label}: \u81EA\u52D5\u5224\u5B9A\u4E0D\u53EF \u624B\u52D5\u78BA\u8A8DURL ${siteResult.manualUrl}`);
-      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u5019\u88DC\u307E\u305F\u306F\u53D6\u5F97\u5236\u9650\u304C\u3042\u308A\u307E\u3059\u3002`, siteResult.manualUrl);
+      writeResearchCheck_(rowData, '\u8981\u78BA\u8A8D', `${site.label}: \u4FA1\u683C\u30FB\u9001\u6599\u30FB\u72B6\u614B\u306E\u3044\u305A\u308C\u304B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u5019\u88DC\u3001\u307E\u305F\u306F\u53D6\u5F97\u5236\u9650\u304C\u3042\u308A\u307E\u3059\u3002\u6761\u4EF6\u5408\u683C\u5019\u88DC\u3068\u3057\u3066\u306F\u8FFD\u8A18\u3057\u3066\u3044\u307E\u305B\u3093\u3002`, siteResult.manualUrl);
     }
   });
   resultsBySite.Other = otherItems.map((item) => formatResearchResult_(item, true));
@@ -2214,8 +2350,31 @@ function researchOneOrder(rowData) {
       unknownOtherShipping.url,
     );
   }
+  const unknownOtherCondition = otherItems.find((item) => isUnknownResearchCondition_(item.condition));
+  if (addedOther > 0 && unknownOtherCondition) {
+    needsReview = true;
+    memos.push(`${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: \u72B6\u614B\u8981\u78BA\u8A8D ${unknownOtherCondition.url}`);
+    writeResearchCheck_(
+      rowData,
+      '\u8981\u78BA\u8A8D',
+      `${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: \u691C\u7D22\u7D50\u679C\u3067\u72B6\u614B\u3092\u81EA\u52D5\u5224\u5B9A\u3067\u304D\u306A\u3044\u305F\u3081\u3001\u5019\u88DCURL\u3067\u72B6\u614B\u78BA\u8A8D\u304C\u5FC5\u8981\u3067\u3059\u3002`,
+      unknownOtherCondition.url,
+    );
+  }
 
   return { added, needsReview, resultsBySite, memos };
+}
+
+function uniqueAcceptedResearchItems_(items, seenThisRun) {
+  return (items || []).filter((item) => {
+    const canonical = canonicalResearchUrl_(item.url);
+    if (!canonical || seenThisRun.has(canonical)) {
+      return false;
+    }
+    seenThisRun.add(canonical);
+    item.url = canonical;
+    return true;
+  });
 }
 
 function searchAmazon(keyword, maxPrice, isDvd) {
@@ -2246,7 +2405,7 @@ function searchSingleSite_(siteKey, keyword, maxPrice, isDvd) {
 }
 
 function searchSiteDefinition_(site, keyword, maxPrice, isDvd) {
-  const result = fetchSearchResults_(site, site.searchUrl(keyword, maxPrice), keyword);
+  const result = fetchSearchResults_(site, site.searchUrl(keyword, maxPrice), keyword, maxPrice);
   const rowData = { expectedVolume: 0, newOnly: false };
   return filterItemsByPriceAndCondition(result.items, maxPrice, site.key, isDvd, rowData);
 }
@@ -2266,7 +2425,7 @@ function researchSiteForKeywords_(site, rowData) {
   rowData.keywordLines.forEach((keyword) => {
     const url = site.searchUrl(keyword, rowData.maxPrice);
     manualUrl = manualUrl || url;
-    const result = fetchSearchResults_(site, url, keyword);
+    const result = fetchSearchResults_(site, url, keyword, rowData.maxPrice);
     ok = ok && result.ok;
     rejectedForMissingData += result.rejectedForMissingData;
     result.items.forEach((item) => combined.push(item));
@@ -2275,7 +2434,7 @@ function researchSiteForKeywords_(site, rowData) {
   return { ok, items: combined, rejectedForMissingData, manualUrl };
 }
 
-function fetchSearchResults_(site, url, keyword) {
+function fetchSearchResults_(site, url, keyword, maxPrice) {
   try {
     const response = UrlFetchApp.fetch(url, {
       muteHttpExceptions: true,
@@ -2307,7 +2466,19 @@ function extractCandidateItems_(html, site, keyword) {
     if (!url || seen.has(url) || !site.resultHost.test(url)) {
       continue;
     }
-    const context = String(html).slice(Math.max(0, match.index - 700), Math.min(String(html).length, match.index + match[0].length + 1100));
+    const htmlText = String(html);
+    const contextBefore = 1400;
+    const contextAfter = 5200;
+    const contextStart = Math.max(0, match.index - contextBefore);
+    let contextEnd = Math.min(htmlText.length, match.index + match[0].length + contextAfter);
+    const nextProductAnchorIndex = nextResearchProductAnchorIndex_(htmlText.slice(match.index + match[0].length), site, url);
+    if (nextProductAnchorIndex >= 0) {
+      contextEnd = Math.min(contextEnd, match.index + match[0].length + nextProductAnchorIndex);
+    }
+    const context = String(html).slice(
+      contextStart,
+      contextEnd,
+    );
     const anchorTitle = stripResearchHtml_(match[2]);
     const altTitle = decodeResearchHtml_(((match[0].match(/\b(?:alt|title)=["']([^"']+)["']/i) || [])[1] || ''));
     const title = (anchorTitle || altTitle || stripResearchHtml_(context).slice(0, 300)).trim();
@@ -2337,6 +2508,19 @@ function extractCandidateItems_(html, site, keyword) {
   }
 
   return { ok: true, items, rejectedForMissingData };
+}
+
+function nextResearchProductAnchorIndex_(htmlFragment, site, currentUrl) {
+  const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi;
+  const currentCanonicalUrl = canonicalResearchUrl_(currentUrl);
+  let match;
+  while ((match = anchorPattern.exec(String(htmlFragment || ''))) !== null) {
+    const url = normalizeResearchProductUrl_(match[1], site.key);
+    if (url && site.resultHost.test(url) && canonicalResearchUrl_(url) !== currentCanonicalUrl) {
+      return match.index;
+    }
+  }
+  return -1;
 }
 
 function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowData) {
@@ -2371,18 +2555,20 @@ function isAllowedSiteCondition_(siteName, condition, text, newOnly) {
   }
 
   if (siteName === 'Amazon') {
-    return NEW_CONDITION_PATTERN.test(value)
-      || /\u4E2D\u53E4\u54C1?\s*[-\uFF0D]?\s*(\u307B\u307C\u65B0\u54C1|\u975E\u5E38\u306B\u826F\u3044|\u826F\u3044|\u53EF)|\u4E2D\u53E4\s*[-\uFF0D]?\s*(\u307B\u307C\u65B0\u54C1|\u975E\u5E38\u306B\u826F\u3044|\u826F\u3044|\u53EF)/i.test(value);
+    return true;
   }
   if (siteName === 'Yahoo' || siteName === 'Mercari') {
-    return /\u65B0\u54C1|\u672A\u4F7F\u7528\u306B\u8FD1\u3044|\u76EE\u7ACB\u3063\u305F\u50B7\u3084\u6C5A\u308C\u306A\u3057|\u3084\u3084\u50B7\u3084\u6C5A\u308C\u3042\u308A|\u50B7\u3084\u6C5A\u308C\u3042\u308A/i.test(value);
+    return true;
   }
   if (siteName === 'Jimoty') {
     // \u6307\u793A\u66F819: \u30B8\u30E2\u30C6\u30A3\u306F\u30B8\u30E3\u30F3\u30AF\u7B49\u306E\u9664\u5916\u8A9E\u304C\u306A\u3051\u308C\u3070\u5019\u88DC\u5316\u3067\u304D\u308B\u3002
     // \u30B8\u30E3\u30F3\u30AF\u30FB\u8CA9\u58F2\u7D42\u4E86\u306E\u5224\u5B9A\u306F\u547C\u3073\u51FA\u3057\u5143\u3067\u5148\u306B\u5B9F\u65BD\u6E08\u307F\u3002
     return true;
   }
-  return NEW_CONDITION_PATTERN.test(value) || USED_CONDITION_PATTERN.test(value);
+  if (siteName === 'Rakuten') {
+    return true;
+  }
+  return true;
 }
 
 function isCompleteDvdCandidate_(text, expectedVolume) {
@@ -2399,6 +2585,34 @@ function expectedVolumeCount_(text) {
   return Number((match && (match[1] || match[2])) || 0);
 }
 
+function buildAmazonAsinResearchLines_(rowData) {
+  const asin = extractAmazonAsinFromResearchRow_(rowData);
+  if (!asin) {
+    return [];
+  }
+  return [`ASIN\u78BA\u8A8DURL ${asin}\nhttps://www.amazon.co.jp/dp/${asin}`];
+}
+
+function extractAmazonAsinFromResearchRow_(rowData) {
+  const text = [
+    rowData && rowData.orderInfo,
+    rowData && rowData.sku,
+    rowData && rowData.productName,
+  ].filter(Boolean).join('\n');
+  const patterns = [
+    /\bASIN\s*[:\uFF1A]\s*([A-Z0-9]{10})\b/i,
+    /\/(?:dp|gp\/product)\/([A-Z0-9]{10})\b/i,
+    /(?:^|[^A-Z0-9])(B[0-9A-Z]{9})(?=$|[^A-Z0-9])/i,
+  ];
+  for (let index = 0; index < patterns.length; index += 1) {
+    const match = String(text || '').match(patterns[index]);
+    if (match) {
+      return match[1].toUpperCase();
+    }
+  }
+  return '';
+}
+
 function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines) {
   const lines = Array.isArray(resultLines) ? resultLines.filter(Boolean) : String(resultLines || '').split('\n').filter(Boolean);
   if (!sheet || !columnNumber || !lines.length) {
@@ -2408,9 +2622,6 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
   const cell = sheet.getRange(rowNumber, columnNumber);
   const current = String(cell.getValue() || '');
   const currentUrls = new Set(extractUrls_(current).map(canonicalResearchUrl_).filter(Boolean));
-  const currentComparableResults = splitResearchResultBlocks_(current)
-    .map(parseResearchLineForComparison_)
-    .filter((result) => result.url || result.price || result.conditionRank);
   const additions = [];
 
   lines.forEach((line) => {
@@ -2419,12 +2630,7 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
     if (!url || currentUrls.has(url)) {
       return;
     }
-    const nextComparable = parseResearchLineForComparison_(normalizedLine);
-    if (!isBetterResearchCandidate_(nextComparable, currentComparableResults)) {
-      return;
-    }
     currentUrls.add(url);
-    currentComparableResults.push(nextComparable);
     additions.push(normalizedLine.replace(/https?:\/\/\S+/, url));
   });
 
@@ -2626,6 +2832,7 @@ function priceNear_(html) {
   const textPatterns = [
     /(?:\u8CA9\u58F2\u4FA1\u683C|\u5546\u54C1\u4FA1\u683C|\u73FE\u5728\u4FA1\u683C|\u5373\u6C7A\u4FA1\u683C|\u4FA1\u683C)\s*[:\uFF1A]?\s*[\uFFE5\u00A5]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*\u5186?/i,
     /[\uFFE5\u00A5]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})(?:\s*\u5186)?/i,
+    /([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*\u5186/i,
   ];
   for (let index = 0; index < textPatterns.length; index += 1) {
     const match = text.match(textPatterns[index]);
@@ -2660,7 +2867,11 @@ function conditionNear_(html, siteName) {
       return match[0];
     }
   }
-  return siteName === 'Jimoty' ? '\u72B6\u614B\u8981\u78BA\u8A8D' : '';
+  return siteName === 'Rakuten' ? '' : '\u72B6\u614B\u8981\u78BA\u8A8D';
+}
+
+function isUnknownResearchCondition_(condition) {
+  return /\u72B6\u614B\u8981\u78BA\u8A8D/.test(String(condition || ''));
 }
 
 function matchesResearchKeyword_(title, keyword) {

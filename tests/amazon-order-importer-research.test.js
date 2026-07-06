@@ -87,6 +87,34 @@ vm.runInContext(codeSource, sandbox, { filename: 'Code.gs' });
 vm.runInContext(researchSource, sandbox, { filename: 'Research.gs' });
 
 assert.equal(
+  sandbox.buildSearchWord_('白い砂 [レンタル落ち] [DVD] [2005]'),
+  '白い砂\n白い砂 レンタル\n白い砂 DVD\n白い砂 中古\n白い砂 [2005]',
+  'single DVD search words must include broad non-volume variants',
+);
+assert.equal(
+  sandbox.buildSearchWord_('ナポレオンの村 [レンタル落ち] 全4巻セット [DVD]'),
+  'ナポレオンの村 全\nナポレオンの村 4\nナポレオンの村 レンタル',
+  'complete DVD sets must keep volume-focused search words',
+);
+{
+  const mercariSingleDvdHtml = [
+    '<html><body>',
+    '<a href="https://jp.mercari.com/item/m-white-sand">★白い砂 Heaven Knows, Mr. Allison DVD★即購入OK</a>',
+    '<span>1,120円</span><span>送料込み</span>',
+    '</body></html>',
+  ].join('');
+  const mercariSite = {
+    key: 'Mercari',
+    label: 'メルカリ',
+    resultHost: /jp\.mercari\.com\/item\//i,
+  };
+  const singleDvdCandidates = sandbox.extractCandidateItems_(mercariSingleDvdHtml, mercariSite, '白い砂 DVD').items;
+  assert.equal(singleDvdCandidates.length, 1, 'broad single DVD keywords must find Mercari DVD titles');
+  assert.equal(singleDvdCandidates[0].price, 1120);
+  assert.equal(singleDvdCandidates[0].url, 'https://jp.mercari.com/item/m-white-sand');
+}
+
+assert.equal(
   sandbox.getTargetSpreadsheet_(),
   sandbox.__activeSpreadsheet,
   'setup must use the spreadsheet that the bound Apps Script is currently attached to',
@@ -315,8 +343,18 @@ assert.equal(
 );
 assert.equal(
   filter([candidate({ condition: '状態要確認' })]).length,
+  1,
+  'Mercari candidates with an unknown condition must be appended for URL-level review',
+);
+assert.equal(
+  filter([candidate({ site: 'Amazon', condition: '状態要確認' })], 10000, 'Amazon').length,
+  1,
+  'Amazon candidates with an unknown condition must be appended when the row is not new-only',
+);
+assert.equal(
+  filter([candidate({ site: 'Amazon', condition: '状態要確認' })], 10000, 'Amazon', { newOnly: true }).length,
   0,
-  'Mercari candidates with an unsupported/unknown condition must not be appended',
+  'new-only rows must still reject unknown-condition Amazon candidates',
 );
 assert.equal(
   filter([candidate({ site: 'Jimoty', condition: '状態要確認' })], 10000, 'Jimoty').length,
@@ -398,6 +436,24 @@ assert.equal(
   'Amazon URLs must be canonicalized',
 );
 assert.equal(
+  sandbox.buildAmazonAsinResearchLines_({
+    orderInfo: '注文番号：123-1234567-1234567\n商品名：ASIN付き商品\nASIN：B0ABCDEF12',
+    sku: 'sku-1',
+    productName: 'ASIN付き商品',
+  })[0],
+  'ASIN確認URL B0ABCDEF12\nhttps://www.amazon.co.jp/dp/B0ABCDEF12',
+  'Amazon ASIN direct links must be generated from order info',
+);
+assert.equal(
+  sandbox.buildAmazonAsinResearchLines_({
+    orderInfo: '注文番号：123-1234567-1234567\n商品名：SKU内ASIN商品',
+    sku: 'muza_B0ABCDEFGH',
+    productName: 'SKU内ASIN商品',
+  })[0],
+  'ASIN確認URL B0ABCDEFGH\nhttps://www.amazon.co.jp/dp/B0ABCDEFGH',
+  'Amazon ASIN direct links must also be generated from SKU-like text',
+);
+assert.equal(
   sandbox.canonicalResearchUrl_('https://www.2ndstreet.jp/goods/detail/goodsId/2219310049359/shopsId/30298?x=1'),
   'https://www.2ndstreet.jp/goods/detail/goodsId/2219310049359/shopsId/30298',
   'Second Street product URLs must be canonicalized',
@@ -412,6 +468,7 @@ assert.equal(
   '',
   'search-page assets must never be treated as product URLs',
 );
+
 assert.equal(sandbox.priceNear_('発売日 2009年 価格 1,513円'), 1513, 'labeled prices must be parsed');
 assert.equal(sandbox.priceNear_('<div data-price="9555">商品</div>'), 9555, 'structured prices must be parsed');
 assert.equal(sandbox.priceNear_('発売日 2009年 21ポイント'), 0, 'years and points must not be parsed as prices');
@@ -422,6 +479,274 @@ assert.equal(
   ),
   true,
   'canonical duplicate URLs must be detected',
+);
+
+const liveResearchSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
+  [['2026/07/01', '注文番号：222-2222222-2222222\n商品名：Panasonic DMR-2W101\nSKU：sku-live', 10000, 'DMR-2W101', '', '', '', '', '', '', '']],
+);
+liveResearchSheet.name = 'リサーチ管理表';
+const liveReviewSheet = makeSheet(['日時', '種別', '注文番号', '検索ワード', '商品名', 'メッセージ', 'URL'], []);
+liveReviewSheet.appendRow = (row) => liveReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  リサーチ管理表: liveResearchSheet,
+  確認用: liveReviewSheet,
+});
+const originalUrlFetchApp = sandbox.UrlFetchApp;
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const html = String(url).includes('mercari')
+      ? [
+        '<html><body>',
+        '<a href="https://jp.mercari.com/item/m-live-ok">Panasonic DMR-2W101 ブルーレイレコーダー</a>',
+        '<span>8,000円 送料 750円 傷や汚れあり</span>',
+        '</body></html>',
+      ].join('')
+      : '<html><body>no matching candidates</body></html>';
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const liveResearchResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: liveResearchSheet,
+  columns: sandbox.researchColumnMap_(liveResearchSheet),
+  orderNumber: '222-2222222-2222222',
+  productName: 'Panasonic DMR-2W101',
+  sku: 'sku-live',
+  maxPrice: 10000,
+  keywordLines: ['DMR-2W101'],
+  isDvd: false,
+  expectedVolume: 0,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(liveResearchResult.added, 1, 'only condition-qualified product URLs must be appended');
+assert.match(liveResearchSheet.grid[1][7], /m-live-ok/, 'qualified Mercari candidate must be written to H column');
+
+const broadResearchSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
+  [['2026/07/06', '注文番号：333-3333333-3333333\n商品名：Love Is All\nSKU：sku-broad', 5000, 'Love Is All', '', '', '', '', '', '', '']],
+);
+broadResearchSheet.name = 'リサーチ管理表';
+const broadReviewSheet = makeSheet(['日時', '種別', '注文番号', '検索ワード', '商品名', 'メッセージ', 'URL'], []);
+broadReviewSheet.appendRow = (row) => broadReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  リサーチ管理表: broadResearchSheet,
+  確認用: broadReviewSheet,
+});
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const requestedUrl = String(url);
+    let html = '<html><body>no matching candidates</body></html>';
+    if (requestedUrl.includes('amazon.co.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://www.amazon.co.jp/dp/B0ABCDEF12">Love Is All Amazon listing</a>',
+        '<div>', 'a'.repeat(2600), '</div><span>1,980円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('auctions.yahoo.co.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://page.auctions.yahoo.co.jp/jp/auction/x123456789">Love Is All Yahoo listing</a>',
+        '<div>', 'y'.repeat(2400), '</div><span>2,100円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('mercari.com')) {
+      html = [
+        '<html><body>',
+        '<a href="https://jp.mercari.com/item/m-love-1">Love Is All Mercari 1</a><span>2,300円</span>',
+        '<a href="https://jp.mercari.com/item/m-love-2">Love Is All Mercari 2</a><span>2,600円</span>',
+        '<a href="https://jp.mercari.com/item/m-love-3">Love Is All Mercari 3</a><span>2,900円</span>',
+        '<a href="https://jp.mercari.com/item/m-love-4">Love Is All Mercari 4</a><span>3,200円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('jmty.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://jmty.jp/tokyo/sale-ele/article-love123">Love Is All Jimoty listing</a><span>1,500円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('search.rakuten.co.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://item.rakuten.co.jp/shop/love-all/">Love Is All Rakuten listing</a>',
+        '<div>', 'r'.repeat(3000), '</div><span data-price="3300">3,300円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('suruga-ya.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://www.suruga-ya.jp/product/detail/LOVE001">Love Is All Surugaya listing</a><span>2,200円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('hardoff.co.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://netmall.hardoff.co.jp/product/1234567/">Love Is All Offmall listing</a><span>2,400円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('2ndstreet.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://www.2ndstreet.jp/goods/detail/goodsId/2219310049359/shopsId/30298">Love Is All SecondStreet listing</a><span>2,800円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('netoff.co.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://www.netoff.co.jp/detail/0014218084/">Love Is All NetOff listing</a><span>1,900円</span>',
+        '</body></html>',
+      ].join('');
+    }
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const broadResearchResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: broadResearchSheet,
+  columns: sandbox.researchColumnMap_(broadResearchSheet),
+  orderNumber: '333-3333333-3333333',
+  productName: 'Love Is All',
+  sku: 'sku-broad',
+  maxPrice: 5000,
+  keywordLines: ['Love Is All'],
+  isDvd: false,
+  expectedVolume: 0,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(broadResearchResult.added, 12, 'all visible site candidates, including four Mercari items, must be appended');
+assert.match(broadResearchSheet.grid[1][5], /B0ABCDEF12/, 'Amazon result must be written to F column');
+assert.match(broadResearchSheet.grid[1][6], /x123456789/, 'Yahoo result must be written to G column');
+assert.equal((broadResearchSheet.grid[1][7].match(/jp\.mercari\.com\/item\/m-love-/g) || []).length, 4, 'four Mercari candidates must be written to H column');
+assert.match(broadResearchSheet.grid[1][8], /article-love123/, 'Jimoty result must be written to I column');
+assert.match(broadResearchSheet.grid[1][9], /item\.rakuten\.co\.jp\/shop\/love-all/, 'Rakuten result must be written to J column');
+assert.equal((broadResearchSheet.grid[1][10].match(/https?:\/\//g) || []).length, 4, 'all configured other-site candidates must be written to K column');
+assert.equal(
+  broadReviewSheet.grid.some((row) => String(row.join('\n')).includes('手動確認URL')),
+  false,
+  'accepted candidates must not be downgraded into manual-search-only memos',
+);
+
+const repeatedAnchorResearchSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
+  [['2026/07/06', '注文番号：249-3141604-9656626\n商品名：ナポレオンの村 [レンタル落ち] 全4巻セット [DVD]\nSKU：pricetar-dvdr-3794', 1913, 'ナポレオンの村 全\nナポレオンの村 4\nナポレオンの村 レンタル', '', '', '', '', '', '', '']],
+);
+repeatedAnchorResearchSheet.name = 'リサーチ管理表';
+const repeatedAnchorReviewSheet = makeSheet(['日時', '種別', '注文番号', '検索ワード', '商品名', 'メッセージ', 'URL'], []);
+repeatedAnchorReviewSheet.appendRow = (row) => repeatedAnchorReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  リサーチ管理表: repeatedAnchorResearchSheet,
+  確認用: repeatedAnchorReviewSheet,
+});
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const requestedUrl = String(url);
+    let html = '<html><body>no matching candidates</body></html>';
+    if (requestedUrl.includes('search.rakuten.co.jp')) {
+      html = [
+        '<html><body>',
+        '<a href="https://item.rakuten.co.jp/shop/napoleon-4/">ナポレオンの村 image link</a>',
+        '<a href="https://item.rakuten.co.jp/shop/napoleon-4/">【中古】ナポレオンの村 (4巻セット) [レンタル落ち] [DVD]</a>',
+        '<span>中古品-可</span><span>1,595円</span><span>送料200円</span>',
+        '<a href="https://item.rakuten.co.jp/shop/other-item/">別の商品</a><span>500円</span>',
+        '</body></html>',
+      ].join('');
+    } else if (requestedUrl.includes('mercari.com')) {
+      html = [
+        '<html><body>',
+        '<a href="https://jp.mercari.com/item/m-napoleon-1">ナポレオンの村 DVD image link</a>',
+        '<a href="https://jp.mercari.com/item/m-napoleon-1">ナポレオンの村 DVD 全4巻セット レンタル落ち</a>',
+        '<span>1,888円</span>',
+        '<a href="https://jp.mercari.com/item/m-other">別の商品</a><span>500円</span>',
+        '</body></html>',
+      ].join('');
+    }
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const repeatedAnchorResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: repeatedAnchorResearchSheet,
+  columns: sandbox.researchColumnMap_(repeatedAnchorResearchSheet),
+  orderNumber: '249-3141604-9656626',
+  productName: 'ナポレオンの村 [レンタル落ち] 全4巻セット [DVD]',
+  sku: 'pricetar-dvdr-3794',
+  maxPrice: 1913,
+  keywordLines: ['ナポレオンの村 全', 'ナポレオンの村 4', 'ナポレオンの村 レンタル'],
+  isDvd: true,
+  expectedVolume: 4,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(repeatedAnchorResult.added, 2, 'same-card repeated product anchors must not cut off Rakuten/Mercari prices');
+assert.match(repeatedAnchorResearchSheet.grid[1][7], /m-napoleon-1/, 'Mercari repeated-anchor candidate must be written to H column');
+assert.match(repeatedAnchorResearchSheet.grid[1][9], /napoleon-4/, 'Rakuten repeated-anchor candidate must be written to J column');
+assert.equal(
+  repeatedAnchorReviewSheet.grid.some((row) => String(row.join('\n')).includes('手動確認URL')),
+  false,
+  'repeated-anchor matches must not fall back to manual search URLs',
+);
+
+const rakutenResearchSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
+  [['2026/07/05', '注文番号：249-4218548-4674261\n商品名：Love Is All\nSKU：sku-rakuten', 3932, 'Love Is All', '', '', '', '', '', '', '']],
+);
+rakutenResearchSheet.name = 'リサーチ管理表';
+const rakutenReviewSheet = makeSheet(['日時', '種別', '注文番号', '検索ワード', '商品名', 'メッセージ', 'URL'], []);
+rakutenReviewSheet.appendRow = (row) => rakutenReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  リサーチ管理表: rakutenResearchSheet,
+  確認用: rakutenReviewSheet,
+});
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const html = String(url).includes('rakuten')
+      ? [
+        '<html><body>',
+        '<a href="https://item.rakuten.co.jp/shop/no-price/">Love Is All sample listing</a>',
+        '<a href="https://item.rakuten.co.jp/shop/love-is-all-13/">Love Is All rental complete set</a>',
+        '<div>', 'x'.repeat(3600), '</div>',
+        '<span data-price="2980">2,980円</span><span>送料無料</span>',
+        '</body></html>',
+      ].join('')
+      : '<html><body>no matching candidates</body></html>';
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const rakutenResearchResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: rakutenResearchSheet,
+  columns: sandbox.researchColumnMap_(rakutenResearchSheet),
+  orderNumber: '249-4218548-4674261',
+  productName: 'Love Is All',
+  sku: 'sku-rakuten',
+  maxPrice: 3932,
+  keywordLines: ['Love Is All'],
+  isDvd: false,
+  expectedVolume: 0,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(rakutenResearchResult.added, 1, 'Rakuten candidates must pass when card price is far from the product link');
+assert.match(rakutenResearchSheet.grid[1][9], /love-is-all-13/, 'qualified Rakuten candidate must be written to J column');
+assert.equal(
+  rakutenReviewSheet.grid.some((row) => String(row.join('\n')).includes('search.rakuten.co.jp')),
+  false,
+  'accepted Rakuten candidates must not also create a manual-search memo',
 );
 
 const visibilitySheet = {
@@ -508,10 +833,10 @@ assert.equal(
       '9,500円｜未使用に近い｜https://jp.mercari.com/item/m444',
     ],
   ),
-  1,
-  'only cheaper or better-condition candidates should be appended after an existing candidate',
+  2,
+  'all non-duplicate qualified candidates should be appended after an existing candidate',
 );
-assert.equal((cell.value.match(/m333/g) || []).length, 0, 'worse candidates must not be appended');
+assert.equal((cell.value.match(/m333/g) || []).length, 1, 'non-duplicate candidates must not be suppressed by price ranking');
 assert.equal((cell.value.match(/m444/g) || []).length, 1, 'better-condition candidates must be appended');
 
 function makeSheet(headers, rows, hidden = false) {
@@ -834,6 +1159,66 @@ assert.equal(
   'management A column must mirror the main A column exactly',
 );
 
+const registryDeletedOrder = '444-5555555-6666666';
+const registryMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況'],
+  [['2026/07/04', `注文番号：${registryDeletedOrder}\n商品名：再表示`, 1000, 'REAPPEAR', '未リサーチ']],
+);
+const registryManagementSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況'],
+  [['2026/07/04', `注文番号：${registryDeletedOrder}\n商品名：再表示`, 1000, 'REAPPEAR', '未リサーチ']],
+);
+const registryDeletedSheet = makeSheet(
+  ['記録日時', '注文番号', '理由', '元行', '注文情報'],
+  [[new Date(), registryDeletedOrder, 'ユーザー削除済み', 138, '']],
+);
+const registrySpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: registryMainSheet,
+  リサーチ管理表: registryManagementSheet,
+  削除済み注文: registryDeletedSheet,
+  確認用: { appendRow: () => {} },
+});
+const registrySyncResult = sandbox.syncResearchManagementByOrderNumber_(registrySpreadsheet);
+assert.equal(registrySyncResult.deleted, 1, 'deleted-order registry must remove reappeared management rows');
+assert.equal(
+  registryMainSheet.grid.some((row) => String(row[1] || '').includes(registryDeletedOrder)),
+  false,
+  'deleted-order registry must remove reappeared main rows before synchronization',
+);
+assert.equal(
+  registryManagementSheet.grid.some((row) => String(row[1] || '').includes(registryDeletedOrder)),
+  false,
+  'deleted-order registry must keep management synchronized with deleted main rows',
+);
+
+const managementOnlyDeletedOrder = '444-7777777-8888888';
+const managementOnlyMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況'],
+  [],
+);
+const managementOnlySheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況'],
+  [['2026/07/05', `注文番号：${managementOnlyDeletedOrder}\n商品名：管理表だけ残存`, 2000, 'ORPHAN', '未リサーチ']],
+);
+const managementOnlyDeletedSheet = makeSheet(['記録日時', '注文番号', '理由', '元行', '注文情報'], []);
+const managementOnlySpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: managementOnlyMainSheet,
+  リサーチ管理表: managementOnlySheet,
+  削除済み注文: managementOnlyDeletedSheet,
+  確認用: { appendRow: () => {} },
+});
+sandbox.syncResearchManagementByOrderNumber_(managementOnlySpreadsheet);
+assert.equal(
+  managementOnlyDeletedSheet.grid.some((row) => row[1] === managementOnlyDeletedOrder),
+  true,
+  'management-only rows deleted by synchronization must be remembered as deleted orders',
+);
+assert.equal(
+  managementOnlySheet.grid.some((row) => String(row[1] || '').includes(managementOnlyDeletedOrder)),
+  false,
+  'management-only rows must be removed when the main sheet no longer has the order',
+);
+
 const unresolvedMainSheet = makeSheet(
   ['出荷期限日', '注文情報', '売上金', '検索ワード'],
   [['2026/07/03', '注文番号を取得できない手入力行', 5000, 'UNKNOWN']],
@@ -897,6 +1282,22 @@ assert.equal(
   '[object Date]',
   'last researched timestamp must be updated',
 );
+assert.equal(
+  sandbox.syncMainAndResearchManagementAfterResearch(orderOne, 2, {
+    status: '候補あり',
+    resultsBySite: {
+      Rakuten: ['ナポレオンの村 1,595円+200円 中古品-可\nhttps://item.rakuten.co.jp/shop/napoleon-4/'],
+      Mercari: ['ナポレオンの村 1,888円 送料要確認 状態要確認\nhttps://jp.mercari.com/item/m-napoleon-1'],
+    },
+    memos: ['楽天市場: 送料込みで条件内 https://item.rakuten.co.jp/shop/napoleon-4/'],
+  }, sandbox.buildResearchManagementContext_(linkedSpreadsheet)),
+  true,
+  'research results must synchronize only to the management sheet',
+);
+assert.doesNotMatch(String(mainSheet.grid[1][7] || ''), /m-napoleon-1/, 'main sheet Mercari column must not be mutated by research');
+assert.doesNotMatch(String(mainSheet.grid[1][9] || ''), /napoleon-4/, 'main sheet Rakuten column must not be mutated by research');
+assert.match(managementSheet.grid[1][7], /m-napoleon-1/, 'management sheet Mercari column must receive researched candidates');
+assert.match(managementSheet.grid[1][9], /napoleon-4/, 'management sheet Rakuten column must receive researched candidates');
 assert.equal(
   sandbox.appendUrlToResearchManagementSheet(
     orderOne,
@@ -1013,6 +1414,9 @@ assert.equal(hourlyManagementSheet.grid[1][4], '候補あり', 'hourly managemen
 assert.match(hourlyManagementSheet.grid[1][9], /hourly888/, 'hourly Rakuten result must be written to J column');
 
 assert.match(researchSource, /候補あり・候補なし等の状態にかかわらず|regardless of status/);
+assert.match(researchSource, /OTHER_RESEARCH_SITES\.forEach/, 'other-site research must iterate the configured sites, not an empty array');
+assert.match(researchSource, /filterItemsByPriceAndCondition/, 'research must filter candidates before appending URLs');
+assert.match(researchSource, /appendResearchLinesToSheet_/, 'research must append only accepted candidate URLs to the management sheet');
 assert.doesNotMatch(
   researchSource,
   /remove(?:Stale|Auto|Unavailable).*Url|clearContent\(\).*URL/i,

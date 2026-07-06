@@ -61,6 +61,7 @@ function onOpen() {
     .addItem('確認用からGmail再処理', 'reprocessReviewRowsFromGmail')
     .addSeparator()
     .addItem('リサーチ管理表を同期', 'syncResearchManagementSheet')
+    .addItem('Gmail取込診断', 'debugAmazonOrderImportStatus')
     .addItem('旧リサーチ管理シートを削除', 'deleteLegacyResearchManagementSheet')
     .addItem('リサーチを手動実行', 'researchAllVisibleManagementRowsNow')
     .addItem('表示中の全行を今すぐリサーチ', 'researchAllVisibleManagementRowsNow')
@@ -450,6 +451,61 @@ function importAmazonOrderEmails() {
   Logger.log(`追加: ${rowsToAppend.length}件 / 確認用: ${reviewRows.length}件`);
 }
 
+function debugAmazonOrderImportStatus() {
+  const spreadsheet = getTargetSpreadsheet_();
+  const orderSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const reviewSheet = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.reviewSheetName);
+  const query = buildAmazonOrderGmailQuery_();
+  const threads = GmailApp.search(query, 0, 20);
+  let messageCount = 0;
+  let targetMessageCount = 0;
+  let parsedOkCount = 0;
+  let duplicateOrDeletedCount = 0;
+  const sampleOrderNumbers = [];
+  const existingOrders = orderSheet ? loadExistingOrders_(orderSheet) : { orderNumbers: new Set(), deletedOrderNumbers: new Set() };
+
+  threads.forEach((thread) => {
+    thread.getMessages().forEach((message) => {
+      messageCount += 1;
+      if (!isTargetMessage_(message)) {
+        return;
+      }
+      targetMessageCount += 1;
+      const result = parseAmazonOrderEmail_(getMessageText_(message));
+      if (!result.ok) {
+        return;
+      }
+      parsedOkCount += 1;
+      const orderNumber = result.fields.orderNumber;
+      if (orderNumber && sampleOrderNumbers.length < 5) {
+        sampleOrderNumbers.push(orderNumber);
+      }
+      if (
+        existingOrders.orderNumbers.has(orderNumber)
+        || existingOrders.deletedOrderNumbers.has(orderNumber)
+      ) {
+        duplicateOrDeletedCount += 1;
+      }
+    });
+  });
+
+  const report = [
+    'Amazon注文メール取込 診断',
+    `Spreadsheet ID: ${spreadsheet.getId()}`,
+    `注文シート: ${orderSheet ? `あり / 最終行 ${orderSheet.getLastRow()}` : 'なし'}`,
+    `確認用シート: ${reviewSheet ? `あり / 最終行 ${reviewSheet.getLastRow()}` : 'なし'}`,
+    `Gmail検索クエリ: ${query}`,
+    `検索スレッド数: ${threads.length}`,
+    `検索メッセージ数: ${messageCount}`,
+    `対象メッセージ数: ${targetMessageCount}`,
+    `解析成功数: ${parsedOkCount}`,
+    `既存または削除済みで追加対象外: ${duplicateOrDeletedCount}`,
+    `サンプル注文番号: ${sampleOrderNumbers.join(', ') || 'なし'}`,
+  ];
+  Logger.log(report.join('\n'));
+  return report.join('\n');
+}
+
 function buildAmazonOrderGmailQuery_() {
   const keywords = (AMAZON_ORDER_IMPORTER_CONFIG.targetTextKeywords || [AMAZON_ORDER_IMPORTER_CONFIG.subjectKeyword])
     .map((keyword) => `"${keyword}"`)
@@ -675,11 +731,48 @@ function buildDvdSearchWords_(productName) {
     return '';
   }
 
+  if (!isCompleteDvdSetProduct_(productName, volume)) {
+    const broadTitle = cleanSingleDvdTitle_(title);
+    const keywordTitle = broadTitle || title;
+    return uniqueLines_([
+      keywordTitle,
+      `${keywordTitle} レンタル`,
+      `${keywordTitle} DVD`,
+      `${keywordTitle} 中古`,
+      broadTitle && broadTitle !== title ? title : '',
+    ]).join('\n');
+  }
+
   return [
     `${title} 全`,
     volume ? `${title} ${volume}` : `${title} 全巻`,
     `${title} レンタル`,
   ].join('\n');
+}
+
+function isCompleteDvdSetProduct_(productName, volume) {
+  return Boolean(volume) || /全巻セット|全\s*[0-9０-９]+\s*巻|全巻|コンプリート|complete\s*(?:box|set)?/i.test(String(productName || ''));
+}
+
+function cleanSingleDvdTitle_(title) {
+  return String(title || '')
+    .replace(/\[[^\]]+\]/g, ' ')
+    .replace(/[（(][^)）]*(?:年|版|字幕|吹替|日本語|英語|20[0-9]{2}|19[0-9]{2})[^)）]*[)）]/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function uniqueLines_(lines) {
+  const seen = {};
+  return (lines || [])
+    .map((line) => String(line || '').trim())
+    .filter((line) => {
+      if (!line || seen[line]) {
+        return false;
+      }
+      seen[line] = true;
+      return true;
+    });
 }
 
 function cleanDvdTitle_(productName) {
@@ -1020,6 +1113,22 @@ function recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, reason) 
   return recorded;
 }
 
+function deleteKnownDeletedOrderRows_(spreadsheet, orderSheet) {
+  const deletedOrderNumbers = loadDeletedOrderNumbers_(spreadsheet);
+  if (!deletedOrderNumbers.size || orderSheet.getLastRow() < 2) {
+    updateKnownOrderSnapshot_(orderSheet);
+    return 0;
+  }
+
+  const rowsToDelete = getOrderNumberRecordsFromOrderSheet_(orderSheet)
+    .filter((record) => deletedOrderNumbers.has(record.orderNumber))
+    .map((record) => record.rowNumber)
+    .sort((left, right) => right - left);
+  Array.from(new Set(rowsToDelete)).forEach((rowNumber) => orderSheet.deleteRow(rowNumber));
+  updateKnownOrderSnapshot_(orderSheet);
+  return rowsToDelete.length;
+}
+
 function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
   if (!AMAZON_ORDER_IMPORTER_CONFIG.autoDeleteProtectedRows) {
     return 0;
@@ -1036,7 +1145,7 @@ function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
     properties.setProperty(cleanupKey, 'true');
     return deleted;
   }
-  return deleteKnownDeletedRowsFromProtectedStart_(spreadsheet, orderSheet);
+  return deleteKnownDeletedOrderRows_(spreadsheet, orderSheet);
 }
 
 function deleteKnownDeletedRowsFromProtectedStart_(spreadsheet, orderSheet) {

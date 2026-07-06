@@ -232,6 +232,14 @@ function syncResearchManagementByOrderNumber() {
 function syncResearchManagementByOrderNumber_(spreadsheet) {
   deleteUnusedLegacyResearchManagementSheets_(spreadsheet);
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const canUseDeletedOrderRegistry = spreadsheet.getSheetByName(AMAZON_ORDER_IMPORTER_CONFIG.deletedOrderSheetName)
+    || typeof spreadsheet.insertSheet === 'function';
+  if (canUseDeletedOrderRegistry && typeof deleteKnownDeletedOrderRows_ === 'function') {
+    deleteKnownDeletedOrderRows_(spreadsheet, orderSheet);
+  }
+  const deletedOrderNumbers = canUseDeletedOrderRegistry && typeof loadDeletedOrderNumbers_ === 'function'
+    ? loadDeletedOrderNumbers_(spreadsheet)
+    : new Set();
   const researchSheet = spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName);
   if (!researchSheet || (typeof researchSheet.isSheetHidden === 'function' && researchSheet.isSheetHidden())) {
     writeSynchronizationCheck_(
@@ -257,6 +265,9 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
         if (row.some((value) => String(value || '').trim())) {
           unresolvedMainOrderRows += 1;
         }
+        return;
+      }
+      if (deletedOrderNumbers.has(orderNumber)) {
         return;
       }
       if (!mainOrders.has(orderNumber)) {
@@ -292,10 +303,23 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
   }
 
   const rowsToDelete = [];
+  const deletedRecordsFromManagement = [];
   managementOrders.forEach((rows, orderNumber) => {
+    if (deletedOrderNumbers.has(orderNumber)) {
+      rows.forEach((rowNumber) => rowsToDelete.push(rowNumber));
+      return;
+    }
     if (!mainOrders.has(orderNumber)) {
       if (!unresolvedMainOrderRows) {
-        rows.forEach((rowNumber) => rowsToDelete.push(rowNumber));
+        rows.forEach((rowNumber) => {
+          rowsToDelete.push(rowNumber);
+          const row = researchValues[rowNumber - 2] || [];
+          deletedRecordsFromManagement.push({
+            orderNumber,
+            rowNumber,
+            orderInfo: mappedValue_(row, researchColumns.orderInfo),
+          });
+        });
       }
       return;
     }
@@ -363,6 +387,9 @@ function syncResearchManagementByOrderNumber_(spreadsheet) {
   });
   if (additions.length) {
     researchSheet.getRange(researchSheet.getLastRow() + 1, 1, additions.length, additions[0].length).setValues(additions).setWrap(true);
+  }
+  if (canUseDeletedOrderRegistry && deletedRecordsFromManagement.length && typeof appendDeletedOrderRecords_ === 'function') {
+    appendDeletedOrderRecords_(spreadsheet, deletedRecordsFromManagement, 'リサーチ管理表との同期で削除検知');
   }
   rowsToDelete.sort((left, right) => right - left).forEach((rowNumber) => researchSheet.deleteRow(rowNumber));
   return {
@@ -934,8 +961,17 @@ function buildResearchRowDataFromSheet_(rowNumber, values, columns, sheet) {
 function rowHasResearchCandidates_(sheet, rowNumber, columns) {
   return RESEARCH_RESULT_KEYS.some((key) => {
     const columnNumber = columns[key];
-    return columnNumber && String(sheet.getRange(rowNumber, columnNumber).getDisplayValue() || '').trim();
+    return columnNumber && hasConfirmedResearchCandidateText_(sheet.getRange(rowNumber, columnNumber).getDisplayValue());
   });
+}
+
+function hasConfirmedResearchCandidateText_(value) {
+  return String(value || '')
+    .split('\n')
+    .some((line) => {
+      const text = String(line || '').trim();
+      return text && !/^\[SEARCH\]/.test(text);
+    });
 }
 
 function isResearchManagementSheet_(sheet) {
@@ -967,17 +1003,12 @@ function researchOneOrder(rowData) {
 
   RESEARCH_SITES.forEach((site) => {
     const siteResult = researchSiteForKeywords_(site, rowData);
-    const accepted = filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData);
-    const uniqueItems = accepted.filter((item) => {
-        const canonical = canonicalResearchUrl_(item.url);
-        if (!canonical || seenThisRun.has(canonical)) {
-          return false;
-        }
-        seenThisRun.add(canonical);
-        item.url = canonical;
-        return true;
-      });
-    const lines = uniqueItems.map((item) => formatResearchResult_(item, false));
+    const accepted = uniqueAcceptedResearchItems_(
+      filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData),
+      seenThisRun,
+    );
+    const directAmazonLines = site.key === 'Amazon' ? buildAmazonAsinResearchLines_(rowData) : [];
+    const lines = accepted.map((item) => formatResearchResult_(item, false)).concat(directAmazonLines);
     resultsBySite[site.key] = lines;
     const addedForSite = appendResearchLinesToSheet_(
       rowData.sheet,
@@ -986,41 +1017,37 @@ function researchOneOrder(rowData) {
       lines,
     );
     added += addedForSite;
-    const unknownShipping = uniqueItems.find((item) => !item.shippingKnown);
+    const unknownShipping = accepted.find((item) => !item.shippingKnown);
     if (addedForSite > 0 && unknownShipping) {
       needsReview = true;
       memos.push(`${site.label}: 送料要確認 ${unknownShipping.url}`);
-      writeResearchCheck_(
-        rowData,
-        '要確認',
-        `${site.label}: 送料不明のため商品価格だけで仮判定しました。`,
-        unknownShipping.url,
-      );
+      writeResearchCheck_(rowData, '要確認', `${site.label}: 送料不明のため商品価格だけで仮判定しました。`, unknownShipping.url);
     }
-    if (!siteResult.ok || siteResult.rejectedForMissingData > 0) {
+    const unknownCondition = accepted.find((item) => isUnknownResearchCondition_(item.condition));
+    if (addedForSite > 0 && unknownCondition) {
+      needsReview = true;
+      memos.push(`${site.label}: 状態要確認 ${unknownCondition.url}`);
+      writeResearchCheck_(rowData, '要確認', `${site.label}: 検索結果で状態を自動判定できないため、候補URLで状態確認が必要です。`, unknownCondition.url);
+    }
+    if (addedForSite === 0 && (!siteResult.ok || siteResult.rejectedForMissingData > 0)) {
       needsReview = true;
       memos.push(`${site.label}: 自動判定不可 手動確認URL ${siteResult.manualUrl}`);
-      writeResearchCheck_(rowData, '要確認', `${site.label}: 自動判定できない候補または取得制限があります。`, siteResult.manualUrl);
+      writeResearchCheck_(rowData, '要確認', `${site.label}: 価格・送料・状態のいずれかを自動判定できない候補、または取得制限があります。条件合格候補としては追記していません。`, siteResult.manualUrl);
     }
   });
 
   const otherItems = [];
-  [].forEach((site) => {
+  OTHER_RESEARCH_SITES.forEach((site) => {
     const siteResult = researchSiteForKeywords_(site, rowData);
-    const accepted = filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData);
-    accepted.forEach((item) => {
-      const canonical = canonicalResearchUrl_(item.url);
-      if (!canonical || seenThisRun.has(canonical)) {
-        return;
-      }
-      seenThisRun.add(canonical);
-      item.url = canonical;
-      otherItems.push(item);
-    });
-    if (!siteResult.ok || siteResult.rejectedForMissingData > 0) {
+    const accepted = uniqueAcceptedResearchItems_(
+      filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData),
+      seenThisRun,
+    );
+    accepted.forEach((item) => otherItems.push(item));
+    if (!accepted.length && (!siteResult.ok || siteResult.rejectedForMissingData > 0)) {
       needsReview = true;
       memos.push(`${site.label}: 自動判定不可 手動確認URL ${siteResult.manualUrl}`);
-      writeResearchCheck_(rowData, '要確認', `${site.label}: 自動判定できない候補または取得制限があります。`, siteResult.manualUrl);
+      writeResearchCheck_(rowData, '要確認', `${site.label}: 価格・送料・状態のいずれかを自動判定できない候補、または取得制限があります。条件合格候補としては追記していません。`, siteResult.manualUrl);
     }
   });
   resultsBySite.Other = otherItems.map((item) => formatResearchResult_(item, true));
@@ -1042,8 +1069,31 @@ function researchOneOrder(rowData) {
       unknownOtherShipping.url,
     );
   }
+  const unknownOtherCondition = otherItems.find((item) => isUnknownResearchCondition_(item.condition));
+  if (addedOther > 0 && unknownOtherCondition) {
+    needsReview = true;
+    memos.push(`${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: 状態要確認 ${unknownOtherCondition.url}`);
+    writeResearchCheck_(
+      rowData,
+      '要確認',
+      `${unknownOtherCondition.siteLabel || unknownOtherCondition.site}: 検索結果で状態を自動判定できないため、候補URLで状態確認が必要です。`,
+      unknownOtherCondition.url,
+    );
+  }
 
   return { added, needsReview, resultsBySite, memos };
+}
+
+function uniqueAcceptedResearchItems_(items, seenThisRun) {
+  return (items || []).filter((item) => {
+    const canonical = canonicalResearchUrl_(item.url);
+    if (!canonical || seenThisRun.has(canonical)) {
+      return false;
+    }
+    seenThisRun.add(canonical);
+    item.url = canonical;
+    return true;
+  });
 }
 
 function searchAmazon(keyword, maxPrice, isDvd) {
@@ -1074,7 +1124,7 @@ function searchSingleSite_(siteKey, keyword, maxPrice, isDvd) {
 }
 
 function searchSiteDefinition_(site, keyword, maxPrice, isDvd) {
-  const result = fetchSearchResults_(site, site.searchUrl(keyword, maxPrice), keyword);
+  const result = fetchSearchResults_(site, site.searchUrl(keyword, maxPrice), keyword, maxPrice);
   const rowData = { expectedVolume: 0, newOnly: false };
   return filterItemsByPriceAndCondition(result.items, maxPrice, site.key, isDvd, rowData);
 }
@@ -1094,7 +1144,7 @@ function researchSiteForKeywords_(site, rowData) {
   rowData.keywordLines.forEach((keyword) => {
     const url = site.searchUrl(keyword, rowData.maxPrice);
     manualUrl = manualUrl || url;
-    const result = fetchSearchResults_(site, url, keyword);
+    const result = fetchSearchResults_(site, url, keyword, rowData.maxPrice);
     ok = ok && result.ok;
     rejectedForMissingData += result.rejectedForMissingData;
     result.items.forEach((item) => combined.push(item));
@@ -1103,7 +1153,7 @@ function researchSiteForKeywords_(site, rowData) {
   return { ok, items: combined, rejectedForMissingData, manualUrl };
 }
 
-function fetchSearchResults_(site, url, keyword) {
+function fetchSearchResults_(site, url, keyword, maxPrice) {
   try {
     const response = UrlFetchApp.fetch(url, {
       muteHttpExceptions: true,
@@ -1135,7 +1185,19 @@ function extractCandidateItems_(html, site, keyword) {
     if (!url || seen.has(url) || !site.resultHost.test(url)) {
       continue;
     }
-    const context = String(html).slice(Math.max(0, match.index - 700), Math.min(String(html).length, match.index + match[0].length + 1100));
+    const htmlText = String(html);
+    const contextBefore = 1400;
+    const contextAfter = 5200;
+    const contextStart = Math.max(0, match.index - contextBefore);
+    let contextEnd = Math.min(htmlText.length, match.index + match[0].length + contextAfter);
+    const nextProductAnchorIndex = nextResearchProductAnchorIndex_(htmlText.slice(match.index + match[0].length), site, url);
+    if (nextProductAnchorIndex >= 0) {
+      contextEnd = Math.min(contextEnd, match.index + match[0].length + nextProductAnchorIndex);
+    }
+    const context = String(html).slice(
+      contextStart,
+      contextEnd,
+    );
     const anchorTitle = stripResearchHtml_(match[2]);
     const altTitle = decodeResearchHtml_(((match[0].match(/\b(?:alt|title)=["']([^"']+)["']/i) || [])[1] || ''));
     const title = (anchorTitle || altTitle || stripResearchHtml_(context).slice(0, 300)).trim();
@@ -1165,6 +1227,19 @@ function extractCandidateItems_(html, site, keyword) {
   }
 
   return { ok: true, items, rejectedForMissingData };
+}
+
+function nextResearchProductAnchorIndex_(htmlFragment, site, currentUrl) {
+  const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi;
+  const currentCanonicalUrl = canonicalResearchUrl_(currentUrl);
+  let match;
+  while ((match = anchorPattern.exec(String(htmlFragment || ''))) !== null) {
+    const url = normalizeResearchProductUrl_(match[1], site.key);
+    if (url && site.resultHost.test(url) && canonicalResearchUrl_(url) !== currentCanonicalUrl) {
+      return match.index;
+    }
+  }
+  return -1;
 }
 
 function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowData) {
@@ -1199,18 +1274,20 @@ function isAllowedSiteCondition_(siteName, condition, text, newOnly) {
   }
 
   if (siteName === 'Amazon') {
-    return NEW_CONDITION_PATTERN.test(value)
-      || /中古品?\s*[-－]?\s*(ほぼ新品|非常に良い|良い|可)|中古\s*[-－]?\s*(ほぼ新品|非常に良い|良い|可)/i.test(value);
+    return true;
   }
   if (siteName === 'Yahoo' || siteName === 'Mercari') {
-    return /新品|未使用に近い|目立った傷や汚れなし|やや傷や汚れあり|傷や汚れあり/i.test(value);
+    return true;
   }
   if (siteName === 'Jimoty') {
     // 指示書19: ジモティはジャンク等の除外語がなければ候補化できる。
     // ジャンク・販売終了の判定は呼び出し元で先に実施済み。
     return true;
   }
-  return NEW_CONDITION_PATTERN.test(value) || USED_CONDITION_PATTERN.test(value);
+  if (siteName === 'Rakuten') {
+    return true;
+  }
+  return true;
 }
 
 function isCompleteDvdCandidate_(text, expectedVolume) {
@@ -1227,6 +1304,34 @@ function expectedVolumeCount_(text) {
   return Number((match && (match[1] || match[2])) || 0);
 }
 
+function buildAmazonAsinResearchLines_(rowData) {
+  const asin = extractAmazonAsinFromResearchRow_(rowData);
+  if (!asin) {
+    return [];
+  }
+  return [`ASIN確認URL ${asin}\nhttps://www.amazon.co.jp/dp/${asin}`];
+}
+
+function extractAmazonAsinFromResearchRow_(rowData) {
+  const text = [
+    rowData && rowData.orderInfo,
+    rowData && rowData.sku,
+    rowData && rowData.productName,
+  ].filter(Boolean).join('\n');
+  const patterns = [
+    /\bASIN\s*[:：]\s*([A-Z0-9]{10})\b/i,
+    /\/(?:dp|gp\/product)\/([A-Z0-9]{10})\b/i,
+    /(?:^|[^A-Z0-9])(B[0-9A-Z]{9})(?=$|[^A-Z0-9])/i,
+  ];
+  for (let index = 0; index < patterns.length; index += 1) {
+    const match = String(text || '').match(patterns[index]);
+    if (match) {
+      return match[1].toUpperCase();
+    }
+  }
+  return '';
+}
+
 function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines) {
   const lines = Array.isArray(resultLines) ? resultLines.filter(Boolean) : String(resultLines || '').split('\n').filter(Boolean);
   if (!sheet || !columnNumber || !lines.length) {
@@ -1236,9 +1341,6 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
   const cell = sheet.getRange(rowNumber, columnNumber);
   const current = String(cell.getValue() || '');
   const currentUrls = new Set(extractUrls_(current).map(canonicalResearchUrl_).filter(Boolean));
-  const currentComparableResults = splitResearchResultBlocks_(current)
-    .map(parseResearchLineForComparison_)
-    .filter((result) => result.url || result.price || result.conditionRank);
   const additions = [];
 
   lines.forEach((line) => {
@@ -1247,12 +1349,7 @@ function appendResearchLinesToSheet_(sheet, rowNumber, columnNumber, resultLines
     if (!url || currentUrls.has(url)) {
       return;
     }
-    const nextComparable = parseResearchLineForComparison_(normalizedLine);
-    if (!isBetterResearchCandidate_(nextComparable, currentComparableResults)) {
-      return;
-    }
     currentUrls.add(url);
-    currentComparableResults.push(nextComparable);
     additions.push(normalizedLine.replace(/https?:\/\/\S+/, url));
   });
 
@@ -1454,6 +1551,7 @@ function priceNear_(html) {
   const textPatterns = [
     /(?:販売価格|商品価格|現在価格|即決価格|価格)\s*[:：]?\s*[￥¥]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*円?/i,
     /[￥¥]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})(?:\s*円)?/i,
+    /([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*円/i,
   ];
   for (let index = 0; index < textPatterns.length; index += 1) {
     const match = text.match(textPatterns[index]);
@@ -1488,7 +1586,11 @@ function conditionNear_(html, siteName) {
       return match[0];
     }
   }
-  return siteName === 'Jimoty' ? '状態要確認' : '';
+  return siteName === 'Rakuten' ? '' : '状態要確認';
+}
+
+function isUnknownResearchCondition_(condition) {
+  return /状態要確認/.test(String(condition || ''));
 }
 
 function matchesResearchKeyword_(title, keyword) {
