@@ -88,12 +88,12 @@ Research_4.gs
 
 ## 5. Code.gsを貼り付ける
 
-文字化け防止のため、ASCII版を使います。
+文字化け防止のため、分割貼り付け用のASCII版を使います。
 
 Apps Script側の `Code.gs` を開き、全選択して次のファイル内容を貼り付けます。
 
 ```text
-apps-script/amazon-order-importer/Code.paste.ascii.gs
+tmp/apps-script-paste/Code.ascii.gs
 ```
 
 貼り付けたら保存します。
@@ -120,6 +120,15 @@ Ctrl + A
 Ctrl + V
 Ctrl + S
 ```
+
+補足:
+
+```text
+apps-script/amazon-order-importer/Code.paste.ascii.gs
+```
+
+これは1ファイルだけで貼り付けたい場合の結合版です。  
+`Code.gs` と `Research.gs` 以降を分割して貼る場合は、結合版を使わないでください。関数が重複します。
 
 ## 7. 関数が表示されるか確認する
 
@@ -217,6 +226,9 @@ researchAllVisibleManagementRowsNow
 ## 13. 既存行の検索ワードを作り直す場合
 
 コード更新後、既存行のD列「検索ワード」を新ルールで作り直す場合は、次の順で実行します。
+
+先にApps Scriptへ最新版の `Code.gs` / `Research.gs` / `Research_2.gs` / `Research_3.gs` / `Research_4.gs` を貼り直して保存してください。  
+`researchAllVisibleManagementRowsNow` だけでは、既存行のD列検索ワードは作り直されません。
 
 ```text
 refreshExistingOrderDetailsFromGmail

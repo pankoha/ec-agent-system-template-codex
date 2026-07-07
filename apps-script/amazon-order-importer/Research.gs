@@ -1199,7 +1199,7 @@ function extractCandidateItems_(html, site, keyword) {
       contextEnd,
     );
     const anchorTitle = stripResearchHtml_(match[2]);
-    const altTitle = decodeResearchHtml_(((match[0].match(/\b(?:alt|title)=["']([^"']+)["']/i) || [])[1] || ''));
+    const altTitle = extractResearchAnchorAttributeTitle_(match[0]);
     const title = (anchorTitle || altTitle || stripResearchHtml_(context).slice(0, 300)).trim();
     if (!title || !matchesResearchKeyword_(title, keyword)) {
       continue;
@@ -1229,6 +1229,19 @@ function extractCandidateItems_(html, site, keyword) {
   return { ok: true, items, rejectedForMissingData };
 }
 
+function extractResearchAnchorAttributeTitle_(anchorHtml) {
+  const value = String(anchorHtml || '');
+  const attributes = ['aria-label', 'alt', 'title'];
+  for (let index = 0; index < attributes.length; index += 1) {
+    const pattern = new RegExp(`\\b${attributes[index]}=["']([^"']+)["']`, 'i');
+    const match = value.match(pattern);
+    if (match && match[1]) {
+      return decodeResearchHtml_(match[1]).trim();
+    }
+  }
+  return '';
+}
+
 function nextResearchProductAnchorIndex_(htmlFragment, site, currentUrl) {
   const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi;
   const currentCanonicalUrl = canonicalResearchUrl_(currentUrl);
@@ -1254,7 +1267,7 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
     if (rejectedCondition || UNAVAILABLE_PATTERN.test(text)) {
       return false;
     }
-    if (isDvd && !isCompleteDvdCandidate_(text, rowData.expectedVolume)) {
+    if (isDvd && (isRejectedDvdPaperGoods_(text) || !isCompleteDvdCandidate_(text, rowData.expectedVolume))) {
       return false;
     }
     if (!isAllowedSiteCondition_(siteName, item.condition, text, rowData.newOnly)) {
@@ -1296,6 +1309,10 @@ function isCompleteDvdCandidate_(text, expectedVolume) {
   }
   const half = toHalfWidthNumber_(String(text || ''));
   return new RegExp(`全\\s*${expectedVolume}\\s*巻|${expectedVolume}\\s*巻\\s*セット|全巻`).test(half);
+}
+
+function isRejectedDvdPaperGoods_(text) {
+  return /プレスブック|プレスシート|パンフレット|パンフ\b|チラシ|ちらし|フライヤー|映画半券|半券/i.test(String(text || ''));
 }
 
 function expectedVolumeCount_(text) {

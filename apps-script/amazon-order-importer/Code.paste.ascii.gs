@@ -705,7 +705,7 @@ function buildSearchWord_(productName) {
     return cleanSearchWord_(buildDvdSearchWords_(productName));
   }
 
-  return cleanSearchWord_(extractModelNumber_(productName) || fallbackSearchWord_(productName));
+  return cleanSearchWord_(buildNonDvdSearchWords_(productName));
 }
 
 function cleanSearchWord_(searchWord) {
@@ -790,18 +790,79 @@ function cleanDvdTitle_(productName) {
   return title.replace(/\s+/g, ' ').trim();
 }
 
+function buildNonDvdSearchWords_(productName) {
+  const modelSearchWords = extractModelSearchWords_(productName);
+  if (modelSearchWords.length) {
+    return uniqueLines_(modelSearchWords.concat(buildProductCategorySearchWords_(productName))).join('\n');
+  }
+
+  return fallbackSearchWord_(productName);
+}
+
 function extractModelNumber_(productName) {
+  return extractModelSearchWords_(productName)[0] || '';
+}
+
+function extractModelSearchWords_(productName) {
   const normalized = productName
     .replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
     .replace(/[\u3010\u3011\[\]]/g, ' ');
 
-  const candidates = normalized.match(/\b[A-Z]{1,8}[A-Z0-9]*-[A-Z0-9-]+(?:\([A-Z0-9]+\))?\b|\b[A-Z]{1,6}[0-9]{1,5}[A-Z]?\b/gi) || [];
-  const scored = candidates
+  const candidates = normalized.match(/\b[A-Z]{1,10}[A-Z0-9]*[0-9][A-Z0-9]*(?:\/[A-Z0-9]+)?\b|\b[A-Z]{1,10}[A-Z0-9]*(?:-[A-Z0-9]+(?:\([A-Z0-9]+\))?)+(?:-[A-Z0-9]+)*\b/gi) || [];
+  const words = [];
+  candidates
     .map((candidate) => cleanModelNumber_(candidate))
     .filter((candidate) => /[0-9]/.test(candidate))
-    .sort((a, b) => b.length - a.length);
+    .filter((candidate) => isUsableModelNumber_(candidate))
+    .forEach((candidate) => {
+      words.push(candidate);
+      buildModelNumberVariants_(candidate).forEach((variant) => words.push(variant));
+    });
 
-  return scored[0] || '';
+  return uniqueLines_(words);
+}
+
+function isUsableModelNumber_(modelNumber) {
+  const value = String(modelNumber || '');
+  if (/^(?:HDD|SSD|DVD|BD|CD)[0-9]*$/i.test(value)) {
+    return false;
+  }
+  return value.length >= 5 || /^[A-Z]{1,8}[0-9]{1,4}[A-Z0-9]*$/i.test(value);
+}
+
+function buildModelNumberVariants_(modelNumber) {
+  const variants = [];
+  const value = String(modelNumber || '').toUpperCase();
+  let parenthesizedBase = '';
+  if (value.indexOf('/') >= 0) {
+    variants.push(value.replace(/\/[A-Z0-9]+$/i, ''));
+  }
+  if (/\([A-Z0-9]+\)-[A-Z0-9]+$/i.test(value)) {
+    parenthesizedBase = value.replace(/(\([A-Z0-9]+\))-[A-Z0-9]+$/i, '$1');
+    variants.push(parenthesizedBase);
+  }
+  if (/\([A-Z0-9]+\)/i.test(value)) {
+    variants.push((parenthesizedBase || value).replace(/\([A-Z0-9]+\)/gi, ''));
+  }
+  return variants.filter((variant) => variant && variant !== value && variant.length >= 5);
+}
+
+function buildProductCategorySearchWords_(productName) {
+  const normalized = String(productName || '')
+    .replace(/[\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xfee0))
+    .replace(/\s+/g, ' ')
+    .trim();
+  const words = [];
+  const brandMatch = normalized.match(/^([A-Za-z][A-Za-z0-9]+|[\u4E00-\u9FA0\u3041-\u3093\u30A1-\u30F6\u30FC]{2,})\s+/);
+  const bracketCategory = normalized.match(/([^\s\u3010\u3011\[\]\uFF08\uFF09()]+)\s*\[([^\]]*(?:HDD|SSD|\u30CF\u30FC\u30C9\u30C7\u30A3\u30B9\u30AF|\u5BB6\u96FB|\u96FB\u5316|\u4E7E\u71E5\u6A5F|\u6D17\u6FEF\u6A5F|\u51B7\u8535\u5EAB|\u708A\u98EF\u5668|\u96FB\u5B50\u30EC\u30F3\u30B8|\u6383\u9664\u6A5F|\u30A8\u30A2\u30B3\u30F3|\u30C6\u30EC\u30D3|\u30EC\u30B3\u30FC\u30C0\u30FC|\u30D7\u30EA\u30F3\u30BF\u30FC|\u30AB\u30E1\u30E9)[^\]]*)\]/i);
+  if (bracketCategory) {
+    words.push(`${brandMatch ? brandMatch[1] : bracketCategory[1]} [${bracketCategory[2]}]`);
+  }
+  const categoryMatch = normalized.match(/(\u30AC\u30B9\u8863\u985E\u4E7E\u71E5\u6A5F|\u8863\u985E\u4E7E\u71E5\u6A5F|\u4E7E\u71E5\u6A5F|\u6D17\u6FEF\u6A5F|\u51B7\u8535\u5EAB|\u708A\u98EF\u5668|\u96FB\u5B50\u30EC\u30F3\u30B8|\u6383\u9664\u6A5F|\u30A8\u30A2\u30B3\u30F3|\u30D7\u30EA\u30F3\u30BF\u30FC|\u30AB\u30E1\u30E9|HDD|SSD|\u30CF\u30FC\u30C9\u30C7\u30A3\u30B9\u30AF)/i);
+  if (brandMatch && categoryMatch && !bracketCategory) {
+    words.push(`${brandMatch[1]} ${categoryMatch[1]}`);
+  }
+  return uniqueLines_(words);
 }
 
 function fallbackSearchWord_(productName) {
@@ -816,8 +877,10 @@ function fallbackSearchWord_(productName) {
 
 function cleanModelNumber_(modelNumber) {
   let value = modelNumber.toUpperCase();
-  value = value.replace(/[\uFF08(][A-Z0-9]+[)\uFF09]$/i, '');
-  value = value.replace(COLOR_SUFFIX_PATTERN, '');
+  value = value.replace(/[\uFF08\uFF09]/g, (char) => (char === '\uFF08' ? '(' : ')'));
+  if (!/\([A-Z0-9]+\)/i.test(value)) {
+    value = value.replace(COLOR_SUFFIX_PATTERN, '');
+  }
   return value;
 }
 
@@ -2480,7 +2543,7 @@ function extractCandidateItems_(html, site, keyword) {
       contextEnd,
     );
     const anchorTitle = stripResearchHtml_(match[2]);
-    const altTitle = decodeResearchHtml_(((match[0].match(/\b(?:alt|title)=["']([^"']+)["']/i) || [])[1] || ''));
+    const altTitle = extractResearchAnchorAttributeTitle_(match[0]);
     const title = (anchorTitle || altTitle || stripResearchHtml_(context).slice(0, 300)).trim();
     if (!title || !matchesResearchKeyword_(title, keyword)) {
       continue;
@@ -2510,6 +2573,19 @@ function extractCandidateItems_(html, site, keyword) {
   return { ok: true, items, rejectedForMissingData };
 }
 
+function extractResearchAnchorAttributeTitle_(anchorHtml) {
+  const value = String(anchorHtml || '');
+  const attributes = ['aria-label', 'alt', 'title'];
+  for (let index = 0; index < attributes.length; index += 1) {
+    const pattern = new RegExp(`\\b${attributes[index]}=["']([^"']+)["']`, 'i');
+    const match = value.match(pattern);
+    if (match && match[1]) {
+      return decodeResearchHtml_(match[1]).trim();
+    }
+  }
+  return '';
+}
+
 function nextResearchProductAnchorIndex_(htmlFragment, site, currentUrl) {
   const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi;
   const currentCanonicalUrl = canonicalResearchUrl_(currentUrl);
@@ -2535,7 +2611,7 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
     if (rejectedCondition || UNAVAILABLE_PATTERN.test(text)) {
       return false;
     }
-    if (isDvd && !isCompleteDvdCandidate_(text, rowData.expectedVolume)) {
+    if (isDvd && (isRejectedDvdPaperGoods_(text) || !isCompleteDvdCandidate_(text, rowData.expectedVolume))) {
       return false;
     }
     if (!isAllowedSiteCondition_(siteName, item.condition, text, rowData.newOnly)) {
@@ -2577,6 +2653,10 @@ function isCompleteDvdCandidate_(text, expectedVolume) {
   }
   const half = toHalfWidthNumber_(String(text || ''));
   return new RegExp(`\u5168\\s*${expectedVolume}\\s*\u5DFB|${expectedVolume}\\s*\u5DFB\\s*\u30BB\u30C3\u30C8|\u5168\u5DFB`).test(half);
+}
+
+function isRejectedDvdPaperGoods_(text) {
+  return /\u30D7\u30EC\u30B9\u30D6\u30C3\u30AF|\u30D7\u30EC\u30B9\u30B7\u30FC\u30C8|\u30D1\u30F3\u30D5\u30EC\u30C3\u30C8|\u30D1\u30F3\u30D5\b|\u30C1\u30E9\u30B7|\u3061\u3089\u3057|\u30D5\u30E9\u30A4\u30E4\u30FC|\u6620\u753B\u534A\u5238|\u534A\u5238/i.test(String(text || ''));
 }
 
 function expectedVolumeCount_(text) {

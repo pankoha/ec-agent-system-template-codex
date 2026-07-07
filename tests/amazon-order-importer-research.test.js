@@ -96,6 +96,26 @@ assert.equal(
   'ナポレオンの村 全\nナポレオンの村 4\nナポレオンの村 レンタル',
   'complete DVD sets must keep volume-focused search words',
 );
+assert.equal(
+  sandbox.buildSearchWord_('東芝 [HDD3.5インチ] MG09ACA16TE/JP'),
+  'MG09ACA16TE/JP\nMG09ACA16TE\n東芝 [HDD3.5インチ]',
+  'slash-suffixed HDD model numbers must keep the full model, base model, and bracket category',
+);
+{
+  const gasDryerSearchWords = sandbox.buildSearchWord_('Rinnai RDT-31S(A)-LP ピュアホワイト 乾太くん [ガス衣類乾燥機 (3.0kgタイプ/プロパンガス用)]');
+  assert.ok(
+    gasDryerSearchWords.includes('RDT-31S(A)-LP'),
+    'appliance model search words must include the full derivative model',
+  );
+  assert.ok(
+    gasDryerSearchWords.includes('RDT-31S(A)'),
+    'appliance model search words must include the parenthesized base derivative',
+  );
+  assert.ok(
+    gasDryerSearchWords.includes('RDT-31S'),
+    'appliance model search words must include the plain base model',
+  );
+}
 {
   const mercariSingleDvdHtml = [
     '<html><body>',
@@ -112,6 +132,22 @@ assert.equal(
   assert.equal(singleDvdCandidates.length, 1, 'broad single DVD keywords must find Mercari DVD titles');
   assert.equal(singleDvdCandidates[0].price, 1120);
   assert.equal(singleDvdCandidates[0].url, 'https://jp.mercari.com/item/m-white-sand');
+}
+{
+  const mercariImageAltDvdHtml = [
+    '<html><body>',
+    '<a href="/item/m67843233000"><picture><img alt="★白い砂 Heaven Knows, Mr. Allison DVD★即購入OK" src="/thumb.jpg"></picture></a>',
+    '<span>1,120円</span><span>送料込み</span>',
+    '</body></html>',
+  ].join('');
+  const mercariSite = {
+    key: 'Mercari',
+    label: 'メルカリ',
+    resultHost: /jp\.mercari\.com\/item\//i,
+  };
+  const imageAltCandidates = sandbox.extractCandidateItems_(mercariImageAltDvdHtml, mercariSite, '白い砂 DVD').items;
+  assert.equal(imageAltCandidates.length, 1, 'Mercari image-alt titles must be matched for DVD search words');
+  assert.equal(imageAltCandidates[0].url, 'https://jp.mercari.com/item/m67843233000');
 }
 
 assert.equal(
@@ -341,6 +377,18 @@ assert.equal(
   0,
   'junk and untested items must be excluded',
 );
+[
+  '★即決落札★非売品/映画プレスブック「アイヒマンの後継者 ミルグラム博士の恐るべき告発」',
+  '映画パンフレット『アイヒマンの後継者 ミルグラム博士の恐るべき告発』',
+  '2307CS●映画プレスシート「アイヒマンの後継者 ミルグラム博士の恐るべき告発」',
+  '■映画チラシ【アイヒマンの後継者 ミルグラム博士の恐るべき告発】2017年',
+].forEach((title) => {
+  assert.equal(
+    filter([candidate({ title, condition: '状態要確認' })], 10000, 'Yahoo', { isDvd: true }).length,
+    0,
+    'DVD rows must reject paper goods even when the movie title matches',
+  );
+});
 assert.equal(
   filter([candidate({ condition: '状態要確認' })]).length,
   1,
