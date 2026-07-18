@@ -7,8 +7,9 @@ const root = path.resolve(__dirname, '..');
 const importerDir = path.join(root, 'apps-script', 'amazon-order-importer');
 const codeSource = fs.readFileSync(path.join(importerDir, 'Code.gs'), 'utf8');
 const researchSource = fs.readFileSync(path.join(importerDir, 'Research.gs'), 'utf8');
+const pasteDir = path.join(root, 'tmp', 'apps-script-paste');
 const expectedBundle = `${codeSource.trimEnd()}\n\n${researchSource.trimEnd()}\n`;
-const expectedAsciiBundle = Array.from(expectedBundle, (char) => {
+const toAsciiSafe = (source) => Array.from(source, (char) => {
   const codePoint = char.codePointAt(0);
   if (char === '\r' || char === '\n' || char === '\t' || (codePoint >= 32 && codePoint <= 126)) {
     return char;
@@ -21,6 +22,8 @@ const expectedAsciiBundle = Array.from(expectedBundle, (char) => {
   const low = 0xDC00 + (value & 0x3FF);
   return `\\u${high.toString(16).toUpperCase().padStart(4, '0')}\\u${low.toString(16).toUpperCase().padStart(4, '0')}`;
 }).join('');
+const expectedAsciiBundle = toAsciiSafe(expectedBundle);
+const expectedAsciiResearch = toAsciiSafe(`${researchSource.trimEnd()}\n`);
 
 assert.equal(
   fs.readFileSync(path.join(importerDir, 'Code.paste.gs'), 'utf8'),
@@ -36,6 +39,23 @@ assert.equal(
   fs.readFileSync(path.join(importerDir, 'Code.paste.ascii.gs'), 'utf8'),
   expectedAsciiBundle,
   'Code.paste.ascii.gs must stay synchronized with Code.gs and Research.gs',
+);
+
+const researchParts = [1, 2, 3, 4].map((partNumber) => (
+  fs.readFileSync(path.join(pasteDir, `Research_${partNumber}.gs`), 'utf8')
+));
+const asciiResearchParts = [1, 2, 3, 4].map((partNumber) => (
+  fs.readFileSync(path.join(pasteDir, `Research_${partNumber}.ascii.gs`), 'utf8')
+));
+assert.equal(
+  researchParts.join(''),
+  `${researchSource.trimEnd()}\n`,
+  'Research_1.gs through Research_4.gs must contain the complete Research.gs source',
+);
+assert.equal(
+  asciiResearchParts.join(''),
+  expectedAsciiResearch,
+  'ASCII research parts must contain the complete Research.gs source',
 );
 
 const sandbox = {
@@ -85,6 +105,46 @@ const sandbox = {
 vm.createContext(sandbox);
 vm.runInContext(codeSource, sandbox, { filename: 'Code.gs' });
 vm.runInContext(researchSource, sandbox, { filename: 'Research.gs' });
+
+{
+  const responses = new Map([
+    ['https://www.amazon.co.jp/dp/B000000001', [200, '<html><title>Test Product</title><div>1,000円 在庫あり</div></html>']],
+    ['https://www.amazon.co.jp/dp/B000000002', [200, '<html><title>Test Product</title><div>お問い合わせの受けつけは終了しました。</div></html>']],
+    ['https://www.amazon.co.jp/dp/B000000003', [200, '<html><title>Test Product</title><div>売り切れ</div></html>']],
+    ['https://www.amazon.co.jp/dp/B000000004', [200, '<html><title>Test Product</title><div>SOLD OUT</div></html>']],
+    ['https://www.amazon.co.jp/dp/B000000005', [404, 'not found']],
+  ]);
+  sandbox.UrlFetchApp = {
+    fetch(url) {
+      if (!responses.has(url)) throw new Error('temporary fetch failure');
+      const [status, html] = responses.get(url);
+      return { getResponseCode: () => status, getContentText: () => html };
+    },
+  };
+  assert.equal(sandbox.inspectResearchUrlAvailability_('https://www.amazon.co.jp/dp/B000000001').availability, 'available');
+  ['B000000002', 'B000000003', 'B000000004', 'B000000005'].forEach((asin) => {
+    assert.equal(sandbox.inspectResearchUrlAvailability_(`https://www.amazon.co.jp/dp/${asin}`).availability, 'unavailable');
+  });
+  assert.equal(sandbox.inspectResearchUrlAvailability_('https://www.amazon.co.jp/dp/B000000006').availability, 'unknown');
+  assert.deepEqual(
+    Array.from(sandbox.buildAmazonAsinResearchLines_({ orderInfo: 'ASIN: B000000003' })),
+    [],
+    'direct Amazon ASIN URLs must not bypass sold-out validation',
+  );
+  const enriched = sandbox.enrichSearchResultsFromProductPages_({
+    ok: true,
+    items: [
+      { site: 'Amazon', siteLabel: 'Amazon', title: 'Test Product', url: 'https://www.amazon.co.jp/dp/B000000001', price: 1000 },
+      { site: 'Amazon', siteLabel: 'Amazon', title: 'Test Product', url: 'https://www.amazon.co.jp/dp/B000000003', price: 900 },
+      { site: 'Amazon', siteLabel: 'Amazon', title: 'Test Product', url: 'https://www.amazon.co.jp/dp/B000000006', price: 800 },
+    ],
+  }, { key: 'Amazon' }, 'Test Product', {});
+  assert.equal(enriched.items.length, 1, 'only detail pages positively confirmed as available may be counted');
+  assert.equal(enriched.rejectedForMissingData, 2, 'sold-out and unknown detail checks must be excluded and flagged');
+  assert.equal(typeof sandbox.dryRunUnavailableResearchCleanup, 'function');
+  assert.equal(typeof sandbox.applyUnavailableResearchCleanup, 'function');
+  delete sandbox.UrlFetchApp;
+}
 
 assert.equal(
   sandbox.buildSearchWord_('白い砂 [レンタル落ち] [DVD] [2005]'),
@@ -483,23 +543,23 @@ assert.equal(
   'https://www.amazon.co.jp/dp/B0ABCDEFGH',
   'Amazon URLs must be canonicalized',
 );
-assert.equal(
-  sandbox.buildAmazonAsinResearchLines_({
+assert.deepEqual(
+  Array.from(sandbox.buildAmazonAsinResearchLines_({
     orderInfo: '注文番号：123-1234567-1234567\n商品名：ASIN付き商品\nASIN：B0ABCDEF12',
     sku: 'sku-1',
     productName: 'ASIN付き商品',
-  })[0],
-  'ASIN確認URL B0ABCDEF12\nhttps://www.amazon.co.jp/dp/B0ABCDEF12',
-  'Amazon ASIN direct links must be generated from order info',
+  })),
+  [],
+  'Amazon ASIN direct links must not be generated when availability cannot be confirmed',
 );
-assert.equal(
-  sandbox.buildAmazonAsinResearchLines_({
+assert.deepEqual(
+  Array.from(sandbox.buildAmazonAsinResearchLines_({
     orderInfo: '注文番号：123-1234567-1234567\n商品名：SKU内ASIN商品',
     sku: 'muza_B0ABCDEFGH',
     productName: 'SKU内ASIN商品',
-  })[0],
-  'ASIN確認URL B0ABCDEFGH\nhttps://www.amazon.co.jp/dp/B0ABCDEFGH',
-  'Amazon ASIN direct links must also be generated from SKU-like text',
+  })),
+  [],
+  'Amazon ASIN direct links from SKU-like text must also require confirmed availability',
 );
 assert.equal(
   sandbox.canonicalResearchUrl_('https://www.2ndstreet.jp/goods/detail/goodsId/2219310049359/shopsId/30298?x=1'),
@@ -519,6 +579,12 @@ assert.equal(
 
 assert.equal(sandbox.priceNear_('発売日 2009年 価格 1,513円'), 1513, 'labeled prices must be parsed');
 assert.equal(sandbox.priceNear_('<div data-price="9555">商品</div>'), 9555, 'structured prices must be parsed');
+assert.equal(sandbox.priceNear_('中古 秘密の扉 833円 + 送料200円'), 833, 'plain Japanese yen prices must be parsed');
+{
+  const shipping = sandbox.shippingNear_('中古 秘密の扉 833円 + 送料200円');
+  assert.equal(shipping.known, true, 'plain Japanese shipping prices must be known');
+  assert.equal(shipping.amount, 200, 'plain Japanese shipping prices must be parsed');
+}
 assert.equal(sandbox.priceNear_('発売日 2009年 21ポイント'), 0, 'years and points must not be parsed as prices');
 assert.equal(
   sandbox.isDuplicateUrlInCell_(
@@ -574,6 +640,98 @@ sandbox.UrlFetchApp = originalUrlFetchApp;
 assert.equal(liveResearchResult.added, 1, 'only condition-qualified product URLs must be appended');
 assert.match(liveResearchSheet.grid[1][7], /m-live-ok/, 'qualified Mercari candidate must be written to H column');
 
+const shortModelHeaders = liveResearchSheet.grid[0].slice();
+const shortModelReviewHeaders = liveReviewSheet.grid[0].slice();
+const shortModelResearchSheet = makeSheet(
+  shortModelHeaders,
+  [['2026/07/09', 'order 503-9637309-0798209 product Panasonic LED base light W230 body NNLK42523J sku-short-model', 3000, 'W230', '', '', '', '', '', '', '']],
+);
+shortModelResearchSheet.name = liveResearchSheet.name;
+const shortModelReviewSheet = makeSheet(shortModelReviewHeaders, []);
+shortModelReviewSheet.appendRow = (row) => shortModelReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  [liveResearchSheet.name]: shortModelResearchSheet,
+  [liveReviewSheet.name]: shortModelReviewSheet,
+});
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const html = String(url).includes('auctions.yahoo.co.jp')
+      ? [
+        '<html><body>',
+        '<a href="https://page.auctions.yahoo.co.jp/jp/auction/v1235649678">Nissan Cedric Gloria 230 side marker lens new</a><span>500?</span>',
+        '<a href="https://page.auctions.yahoo.co.jp/jp/auction/f1194395039">W230 new long sleeve training wear size 150 Sneed Sanwa white</a><span>700?</span>',
+        '</body></html>',
+      ].join('')
+      : '<html><body>no matching candidates</body></html>';
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const shortModelResearchResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: shortModelResearchSheet,
+  columns: sandbox.researchColumnMap_(shortModelResearchSheet),
+  orderNumber: '503-9637309-0798209',
+  productName: 'Panasonic LED base light W230 body NNLK42523J',
+  sku: 'sku-short-model',
+  maxPrice: 3000,
+  keywordLines: ['W230'],
+  isDvd: false,
+  expectedVolume: 0,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(
+  sandbox.isCompatibleResearchProductCandidate_(
+    { title: 'W230 new long sleeve training wear size 150 Sneed Sanwa white', contextText: '' },
+    { productName: 'Panasonic LED base light W230 body NNLK42523J' },
+    'W230',
+  ),
+  false,
+  'short model keyword matches must still reject a different product category',
+);
+assert.equal(
+  sandbox.isCompatibleResearchProductCandidate_(
+    { title: 'Panasonic NNLK42523J W230 LED base light body', contextText: '' },
+    { productName: 'Panasonic LED base light W230 body NNLK42523J' },
+    'W230',
+  ),
+  true,
+  'short model keyword matches must keep a candidate with the product model/category',
+);
+assert.equal(
+  sandbox.isCompatibleResearchProductCandidate_(
+    {
+      title: 'DCE-120用 990738 アイリスオーヤマ 除湿機 水タンク・カバー付 【純正】',
+      contextText: '',
+    },
+    {
+      productName: 'アイリスオーヤマ 除湿機 衣類乾燥 コンプレッサー式 30畳 空気清浄機付 除湿器 DCE-120 ホワイト',
+    },
+    'DCE-120',
+  ),
+  false,
+  'main-product rows must reject accessory parts even when the model number matches',
+);
+assert.equal(
+  sandbox.isCompatibleResearchProductCandidate_(
+    {
+      title: 'アイリスオーヤマ 除湿機 衣類乾燥 コンプレッサー式 DCE-120 ホワイト',
+      contextText: '',
+    },
+    {
+      productName: 'アイリスオーヤマ 除湿機 衣類乾燥 コンプレッサー式 30畳 空気清浄機付 除湿器 DCE-120 ホワイト',
+    },
+    'DCE-120',
+  ),
+  true,
+  'main-product rows must keep the actual appliance body when the model number matches',
+);
+assert.equal(shortModelResearchResult.added, 0, 'different-category Yahoo candidates must not be appended');
+assert.doesNotMatch(shortModelResearchSheet.grid[1][6], /v1235649678|f1194395039/, 'wrong Yahoo products must not be written');
+
 const broadResearchSheet = makeSheet(
   ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
   [['2026/07/06', '注文番号：333-3333333-3333333\n商品名：Love Is All\nSKU：sku-broad', 5000, 'Love Is All', '', '', '', '', '', '', '']],
@@ -618,6 +776,8 @@ sandbox.UrlFetchApp = {
         '<a href="https://jmty.jp/tokyo/sale-ele/article-love123">Love Is All Jimoty listing</a><span>1,500円</span>',
         '</body></html>',
       ].join('');
+    } else if (requestedUrl.includes('item.rakuten.co.jp/shop/love-all')) {
+      html = '<html><head><title>Love Is All Rakuten listing</title></head><body><span data-price="3300">3,300円</span></body></html>';
     } else if (requestedUrl.includes('search.rakuten.co.jp')) {
       html = [
         '<html><body>',
@@ -670,7 +830,7 @@ const broadResearchResult = sandbox.researchOneOrder({
   newOnly: false,
 });
 sandbox.UrlFetchApp = originalUrlFetchApp;
-assert.equal(broadResearchResult.added, 12, 'all visible site candidates, including four Mercari items, must be appended');
+assert.equal(broadResearchResult.added, 12, 'all availability-confirmed visible site candidates, including four Mercari items, must be appended');
 assert.match(broadResearchSheet.grid[1][5], /B0ABCDEF12/, 'Amazon result must be written to F column');
 assert.match(broadResearchSheet.grid[1][6], /x123456789/, 'Yahoo result must be written to G column');
 assert.equal((broadResearchSheet.grid[1][7].match(/jp\.mercari\.com\/item\/m-love-/g) || []).length, 4, 'four Mercari candidates must be written to H column');
@@ -698,7 +858,9 @@ sandbox.UrlFetchApp = {
   fetch(url) {
     const requestedUrl = String(url);
     let html = '<html><body>no matching candidates</body></html>';
-    if (requestedUrl.includes('search.rakuten.co.jp')) {
+    if (requestedUrl.includes('item.rakuten.co.jp/shop/napoleon-4')) {
+      html = '<html><head><title>ナポレオンの村 DVD 全4巻セット レンタル落ち</title></head><body><span>1,595円</span></body></html>';
+    } else if (requestedUrl.includes('search.rakuten.co.jp')) {
       html = [
         '<html><body>',
         '<a href="https://item.rakuten.co.jp/shop/napoleon-4/">ナポレオンの村 image link</a>',
@@ -746,6 +908,60 @@ assert.equal(
   'repeated-anchor matches must not fall back to manual search URLs',
 );
 
+assert.equal(
+  sandbox.broadDvdResearchTitle_('精霊の守り人 1〜13 (全13枚)(全巻セットDVD) [中古DVD] [レンタル落ち]'),
+  '精霊の守り人',
+  'Mercari DVD broad search must remove Amazon range/count wording',
+);
+const mercariBroadDvdResearchSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
+  [['2026/07/12', '注文番号：249-4786494-0001414\n商品名：精霊の守り人 1〜13 (全13枚)(全巻セットDVD) [中古DVD] [レンタル落ち]\nSKU：pricetar-dvdr-1552\nASIN：B00A75YD4W', 5137, '精霊の守り人 1〜13｜全\n精霊の守り人 1〜13｜全巻\n精霊の守り人 1〜13｜レンタル', '', '', '', '', '', '', '']],
+);
+mercariBroadDvdResearchSheet.name = 'リサーチ管理表';
+const mercariBroadDvdReviewSheet = makeSheet(['日時', '種別', '注文番号', '検索ワード', '商品名', 'メッセージ', 'URL'], []);
+mercariBroadDvdReviewSheet.appendRow = (row) => mercariBroadDvdReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  リサーチ管理表: mercariBroadDvdResearchSheet,
+  確認用: mercariBroadDvdReviewSheet,
+});
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const decodedUrl = decodeURIComponent(String(url));
+    const html = decodedUrl.includes('/item/m96103720800')
+      ? '<html><head><title>精霊の守り人 レンタル用 全13巻</title></head><body><span>3,800円</span></body></html>'
+      : decodedUrl.includes('jp.mercari.com')
+      && decodedUrl.includes('精霊の守り人')
+      && !decodedUrl.includes('1〜13')
+      ? [
+        '<html><body>',
+        '<a href="https://jp.mercari.com/item/m96103720800">精霊の守り人 レンタル用　全13巻</a>',
+        '<span>3,800円</span>',
+        '</body></html>',
+      ].join('')
+      : '<html><body>no matching candidates</body></html>';
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const mercariBroadDvdResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: mercariBroadDvdResearchSheet,
+  columns: sandbox.researchColumnMap_(mercariBroadDvdResearchSheet),
+  orderNumber: '249-4786494-0001414',
+  productName: '精霊の守り人 1〜13 (全13枚)(全巻セットDVD) [中古DVD] [レンタル落ち]',
+  sku: 'pricetar-dvdr-1552',
+  maxPrice: 5137,
+  keywordLines: ['精霊の守り人 1〜13｜全', '精霊の守り人 1〜13｜全巻', '精霊の守り人 1〜13｜レンタル'],
+  isDvd: true,
+  expectedVolume: 0,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(mercariBroadDvdResult.added, 1, 'Mercari broad DVD search must append rough rental title matches');
+assert.match(mercariBroadDvdResearchSheet.grid[1][7], /m96103720800/, 'rough Mercari DVD title must be written to H column');
+
 const rakutenResearchSheet = makeSheet(
   ['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'],
   [['2026/07/05', '注文番号：249-4218548-4674261\n商品名：Love Is All\nSKU：sku-rakuten', 3932, 'Love Is All', '', '', '', '', '', '', '']],
@@ -759,7 +975,14 @@ sandbox.__activeSpreadsheet = makeSpreadsheet({
 });
 sandbox.UrlFetchApp = {
   fetch(url) {
-    const html = String(url).includes('rakuten')
+    const requestedUrl = String(url);
+    if (requestedUrl.includes('shop/no-price')) {
+      return {
+        getResponseCode: () => 200,
+        getContentText: () => '<html><body><h1>Other sample listing</h1><span data-price="1980">1,980</span></body></html>',
+      };
+    }
+    const html = requestedUrl.includes('rakuten')
       ? [
         '<html><body>',
         '<a href="https://item.rakuten.co.jp/shop/no-price/">Love Is All sample listing</a>',
@@ -796,6 +1019,179 @@ assert.equal(
   false,
   'accepted Rakuten candidates must not also create a manual-search memo',
 );
+
+const rakutenDetailFallbackSheet = makeSheet(
+  ['shipDate', 'orderInfo', 'maxPrice', 'keyword', 'status', 'Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Other'],
+  [['2026/07/08', 'orderNumber: 250-2688821-3232625\nproductName: Secret Door rental complete set\nSKU: sku-secret-door', 2500, 'Secret Door rental complete set', '', '', '', '', '', '', '']],
+);
+rakutenDetailFallbackSheet.getName = null;
+const rakutenDetailFallbackReviewSheet = makeSheet(['date', 'type', 'orderNumber', 'keyword', 'productName', 'message', 'URL'], []);
+rakutenDetailFallbackReviewSheet.appendRow = (row) => rakutenDetailFallbackReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  'research-management': rakutenDetailFallbackSheet,
+  review: rakutenDetailFallbackReviewSheet,
+});
+sandbox.__activeSpreadsheet.insertSheet = (name) => {
+  const sheet = makeSheet([''], []);
+  sheet.name = name;
+  sheet.appendRow = (row) => sheet.grid.push(row.slice());
+  return sheet;
+};
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const requestedUrl = String(url);
+    const html = requestedUrl.includes('item.rakuten.co.jp/youing-gaba-hama/pdhvutzwe0vk-itqsd2zh7pwehq')
+      ? [
+        '<html><head><title>Secret Door rental complete set</title></head><body>',
+        '<h1>Secret Door rental complete set</h1>',
+        '<span data-price="1980">1,980</span><span>free shipping</span><span>used good</span>',
+        '</body></html>',
+      ].join('')
+      : [
+        '<html><body>',
+        '<a href="https://item.rakuten.co.jp/youing-gaba-hama/pdhvutzwe0vk-itqsd2zh7pwehq/">Secret Door rental complete set</a>',
+        '<div>search result card has no visible price near this product link</div>',
+        '</body></html>',
+      ].join('');
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const rakutenDetailFallbackResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: rakutenDetailFallbackSheet,
+  columns: { status: 5, Amazon: 6, Yahoo: 7, Mercari: 8, Jimoty: 9, Rakuten: 10, Other: 11 },
+  orderNumber: '250-2688821-3232625',
+  productName: 'Secret Door rental complete set',
+  sku: 'sku-secret-door',
+  maxPrice: 2500,
+  keywordLines: ['Secret Door rental complete set'],
+  isDvd: false,
+  expectedVolume: 0,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(rakutenDetailFallbackResult.added, 1, 'Rakuten products missing a search-page price must be recovered from the detail page');
+assert.match(rakutenDetailFallbackSheet.grid[1][9], /pdhvutzwe0vk-itqsd2zh7pwehq/, 'detail-page recovered Rakuten candidate must be written to J column');
+assert.equal(
+  rakutenDetailFallbackReviewSheet.grid.some((row) => String(row.join('\n')).includes('search.rakuten.co.jp')),
+  false,
+  'detail-page recovered Rakuten candidates must not leave a manual-search memo',
+);
+
+const rakutenDvdDetailSheet = makeSheet(
+  ['shipDate', 'orderInfo', 'maxPrice', 'keyword', 'status', 'Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Other'],
+  [['2026/07/08', 'orderNumber: 250-2688821-3232625\nproductName: \u79D8\u5BC6\u306E\u6249 [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] \u516812\u5DFB\u30BB\u30C3\u30C8\nSKU: sku-secret-door', 1507, '\u79D8\u5BC6\u306E\u6249\n\u79D8\u5BC6\u306E\u6249 12\n\u79D8\u5BC6\u306E\u6249 \u30EC\u30F3\u30BF\u30EB', '', '', '', '', '', '', '']],
+);
+rakutenDvdDetailSheet.getName = null;
+const rakutenDvdDetailReviewSheet = makeSheet(['date', 'type', 'orderNumber', 'keyword', 'productName', 'message', 'URL'], []);
+rakutenDvdDetailReviewSheet.appendRow = (row) => rakutenDvdDetailReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  'research-management': rakutenDvdDetailSheet,
+  review: rakutenDvdDetailReviewSheet,
+});
+sandbox.__activeSpreadsheet.insertSheet = (name) => {
+  const sheet = makeSheet([''], []);
+  sheet.name = name;
+  sheet.appendRow = (row) => sheet.grid.push(row.slice());
+  return sheet;
+};
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const requestedUrl = String(url);
+    const html = requestedUrl.includes('item.rakuten.co.jp/youing-gaba-hama/pdhvutzwe0vk-itqsd2zh7pwehq')
+      ? [
+        '<html><head><title>\u79D8\u5BC6\u306E\u6249 [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] \u516812\u5DFB\u30BB\u30C3\u30C8</title></head><body>',
+        '<h1>\u79D8\u5BC6\u306E\u6249 [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] \u516812\u5DFB\u30BB\u30C3\u30C8</h1>',
+        '<span>833\u5186</span><span>+\u9001\u6599200\u5186</span><span>\u4E2D\u53E4-\u53EF</span>',
+        '</body></html>',
+      ].join('')
+      : [
+        '<html><body>',
+        '<a href="https://item.rakuten.co.jp/youing-gaba-hama/pdhvutzwe0vk-itqsd2zh7pwehq/">\u79D8\u5BC6\u306E\u6249 DVD</a>',
+        '<span>833\u5186</span>',
+        '</body></html>',
+      ].join('');
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const rakutenDvdDetailResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: rakutenDvdDetailSheet,
+  columns: { status: 5, Amazon: 6, Yahoo: 7, Mercari: 8, Jimoty: 9, Rakuten: 10, Other: 11 },
+  orderNumber: '250-2688821-3232625',
+  productName: '\u79D8\u5BC6\u306E\u6249 [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] \u516812\u5DFB\u30BB\u30C3\u30C8',
+  sku: 'sku-secret-door',
+  maxPrice: 1507,
+  keywordLines: ['\u79D8\u5BC6\u306E\u6249', '\u79D8\u5BC6\u306E\u6249 12', '\u79D8\u5BC6\u306E\u6249 \u30EC\u30F3\u30BF\u30EB'],
+  isDvd: true,
+  expectedVolume: 12,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(rakutenDvdDetailResult.added, 1, 'Rakuten DVD candidates with search-page prices must be checked on detail pages when complete-set text is missing');
+assert.match(rakutenDvdDetailSheet.grid[1][9], /pdhvutzwe0vk-itqsd2zh7pwehq/, 'detail-page complete-set Rakuten DVD candidate must be written to J column');
+
+const rakutenUrlOnlyDvdSheet = makeSheet(
+  ['shipDate', 'orderInfo', 'maxPrice', 'keyword', 'status', 'Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Other'],
+  [['2026/07/08', 'orderNumber: 250-2688821-3232625\nproductName: \u79D8\u5BC6\u306E\u6249 [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] \u516812\u5DFB\u30BB\u30C3\u30C8\nSKU: sku-secret-door', 1507, '\u79D8\u5BC6\u306E\u6249 \u5168\n\u79D8\u5BC6\u306E\u6249 12\n\u79D8\u5BC6\u306E\u6249 \u30EC\u30F3\u30BF\u30EB', '', '', '', '', '', '', '']],
+);
+rakutenUrlOnlyDvdSheet.getName = null;
+const rakutenUrlOnlyDvdReviewSheet = makeSheet(['date', 'type', 'orderNumber', 'keyword', 'productName', 'message', 'URL'], []);
+rakutenUrlOnlyDvdReviewSheet.appendRow = (row) => rakutenUrlOnlyDvdReviewSheet.grid.push(row.slice());
+sandbox.__activeSpreadsheet = makeSpreadsheet({
+  'research-management': rakutenUrlOnlyDvdSheet,
+  review: rakutenUrlOnlyDvdReviewSheet,
+});
+sandbox.__activeSpreadsheet.insertSheet = (name) => {
+  const sheet = makeSheet([''], []);
+  sheet.name = name;
+  sheet.appendRow = (row) => sheet.grid.push(row.slice());
+  return sheet;
+};
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    const requestedUrl = String(url);
+    const html = requestedUrl.includes('item.rakuten.co.jp/youing-gaba-hama/pdhvutzwe0vk-itqsd2zh7pwehq')
+      ? [
+        '<html><head><title>\u3010\u4E2D\u53E4\u3011 \u79D8\u5BC6\u306E\u6249 (12\u5DFB\u30BB\u30C3\u30C8) [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] [DVD]</title></head><body>',
+        '<h1>\u3010\u4E2D\u53E4\u3011 \u79D8\u5BC6\u306E\u6249 (12\u5DFB\u30BB\u30C3\u30C8) [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] [DVD]</h1>',
+        '<span>833\u5186</span><span>+\u9001\u6599200\u5186</span><span>\u4E2D\u53E4-\u53EF</span>',
+        '</body></html>',
+      ].join('')
+      : [
+        '<html><body>',
+        '<div class="result"><a href="https://item.rakuten.co.jp/youing-gaba-hama/pdhvutzwe0vk-itqsd2zh7pwehq/">\u5546\u54C1\u30DA\u30FC\u30B8</a></div>',
+        '<div class="result"><a href="https://item.rakuten.co.jp/noise-shop/noise-item/">\u5546\u54C1\u30DA\u30FC\u30B8</a></div>',
+        '</body></html>',
+      ].join('');
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => html,
+    };
+  },
+};
+const rakutenUrlOnlyDvdResult = sandbox.researchOneOrder({
+  row: 2,
+  sheet: rakutenUrlOnlyDvdSheet,
+  columns: { status: 5, Amazon: 6, Yahoo: 7, Mercari: 8, Jimoty: 9, Rakuten: 10, Other: 11 },
+  orderNumber: '250-2688821-3232625',
+  productName: '\u79D8\u5BC6\u306E\u6249 [\u30EC\u30F3\u30BF\u30EB\u843D\u3061] \u516812\u5DFB\u30BB\u30C3\u30C8',
+  sku: 'sku-secret-door',
+  maxPrice: 1507,
+  keywordLines: ['\u79D8\u5BC6\u306E\u6249 \u5168', '\u79D8\u5BC6\u306E\u6249 12', '\u79D8\u5BC6\u306E\u6249 \u30EC\u30F3\u30BF\u30EB'],
+  isDvd: true,
+  expectedVolume: 12,
+  newOnly: false,
+});
+sandbox.UrlFetchApp = originalUrlFetchApp;
+assert.equal(rakutenUrlOnlyDvdResult.added, 1, 'Rakuten URL-only candidates must be checked on detail pages automatically');
+assert.match(rakutenUrlOnlyDvdSheet.grid[1][9], /pdhvutzwe0vk-itqsd2zh7pwehq/, 'URL-only Rakuten detail candidate must be written to J column');
 
 const visibilitySheet = {
   isRowHiddenByUser(row) {
@@ -1132,6 +1528,64 @@ assert.equal(
   'known deleted orders must still be removed if they reappear',
 );
 
+const deletedBeforeProtectedStartOrder = '888-1212121-1212121';
+const stillVisibleOrder = '999-1212121-1212121';
+const beforeProtectedStartMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード'],
+  [
+    ['2026/07/01', `注文番号：${stillVisibleOrder}\n商品名：残す注文`, 8000, 'KEEP'],
+  ],
+);
+const beforeProtectedStartDeletedSheet = makeSheet(['記録日時', '注文番号', '理由', '元行', '注文情報'], []);
+const beforeProtectedStartSnapshotSheet = makeSheet(
+  ['注文番号'],
+  [[stillVisibleOrder], [deletedBeforeProtectedStartOrder]],
+);
+const beforeProtectedStartSpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: beforeProtectedStartMainSheet,
+  削除済み注文: beforeProtectedStartDeletedSheet,
+  注文番号スナップショット: beforeProtectedStartSnapshotSheet,
+});
+sandbox.__properties = { PROTECTED_ROWS_BASELINE_CLEANED: 'true' };
+sandbox.enforceProtectedDeletedRows_(beforeProtectedStartSpreadsheet, beforeProtectedStartMainSheet, 'Gmail取込前保護');
+assert.equal(
+  beforeProtectedStartDeletedSheet.grid.some((row) => row[1] === deletedBeforeProtectedStartOrder),
+  true,
+  'manual deletions before row 132 must be recorded before any snapshot refresh can hide them',
+);
+assert.equal(
+  sandbox.loadExistingOrders_(beforeProtectedStartMainSheet).deletedOrderNumbers.has(deletedBeforeProtectedStartOrder),
+  true,
+  'orders deleted before row 132 must be excluded from later Gmail imports',
+);
+sandbox.__properties = {};
+
+const selectedDeletedOrder = '888-3333333-4444444';
+const selectedDeleteMainSheet = makeSheet(
+  ['出荷期限日', '注文情報', '売上金', '検索ワード'],
+  [
+    ['2026/07/01', `注文番号：${stillVisibleOrder}\n商品名：残す注文`, 8000, 'KEEP'],
+    ['2026/07/02', `注文番号：${selectedDeletedOrder}\n商品名：任意行削除対象`, 7000, 'DELETE'],
+  ],
+);
+const selectedDeleteDeletedSheet = makeSheet(['記録日時', '注文番号', '理由', '元行', '注文情報'], []);
+const selectedDeleteSnapshotSheet = makeSheet(['注文番号'], [[stillVisibleOrder], [selectedDeletedOrder]]);
+const selectedDeleteSpreadsheet = makeSpreadsheet({
+  注文確定商品リサーチ表: selectedDeleteMainSheet,
+  削除済み注文: selectedDeleteDeletedSheet,
+  注文番号スナップショット: selectedDeleteSnapshotSheet,
+});
+assert.equal(
+  sandbox.deleteRowsAndRememberOrders_(selectedDeleteSpreadsheet, selectedDeleteMainSheet, 3, 1, '選択行削除テスト', false),
+  1,
+  'arbitrary selected rows must be deletable and remembered',
+);
+assert.equal(
+  selectedDeleteDeletedSheet.grid.some((row) => row[1] === selectedDeletedOrder),
+  true,
+  'arbitrary selected rows must be stored in the deleted-order registry',
+);
+
 const legacyColumns = sandbox.researchColumnMap_(
   makeSheet(['出荷期限日', '注文情報', '売上金', '検索ワード', 'リサーチ状況', 'Amazon', 'ヤフオク', 'メルカリ', 'ジモティ', '楽天市場', 'その他サイト'], []),
 );
@@ -1443,6 +1897,20 @@ const hourlySpreadsheet = makeSpreadsheet({
 });
 sandbox.__activeSpreadsheet = hourlySpreadsheet;
 sandbox.__properties = {};
+hourlyManagementSheet.getRange(2, 6).setValue([
+  'sold-out candidate',
+  'https://www.amazon.co.jp/dp/B000000004',
+  'unknown candidate',
+  'https://www.amazon.co.jp/dp/B000000006',
+].join('\n'));
+sandbox.UrlFetchApp = {
+  fetch(url) {
+    if (url === 'https://www.amazon.co.jp/dp/B000000004') {
+      return { getResponseCode: () => 200, getContentText: () => '<div>SOLD OUT</div>' };
+    }
+    throw new Error('temporary fetch failure');
+  },
+};
 sandbox.researchOneOrder = (rowData) => {
   assert.equal(rowData.sheet, hourlyManagementSheet, 'hourly research must process displayed management rows');
   assert.equal(rowData.orderNumber, hourlyOrder);
@@ -1458,6 +1926,9 @@ sandbox.researchOneOrder = (rowData) => {
 };
 sandbox.researchListedItemsHourly();
 sandbox.researchOneOrder = originalResearchOneOrder;
+delete sandbox.UrlFetchApp;
+assert.doesNotMatch(hourlyManagementSheet.grid[1][5], /B000000004/, 'hourly research must remove confirmed sold-out candidates');
+assert.match(hourlyManagementSheet.grid[1][5], /B000000006/, 'hourly research must preserve candidates whose availability is unknown');
 assert.equal(hourlyManagementSheet.grid[1][4], '候補あり', 'hourly management row status must be updated');
 assert.match(hourlyManagementSheet.grid[1][9], /hourly888/, 'hourly Rakuten result must be written to J column');
 
@@ -1465,10 +1936,10 @@ assert.match(researchSource, /候補あり・候補なし等の状態にかか�
 assert.match(researchSource, /OTHER_RESEARCH_SITES\.forEach/, 'other-site research must iterate the configured sites, not an empty array');
 assert.match(researchSource, /filterItemsByPriceAndCondition/, 'research must filter candidates before appending URLs');
 assert.match(researchSource, /appendResearchLinesToSheet_/, 'research must append only accepted candidate URLs to the management sheet');
-assert.doesNotMatch(
+assert.match(
   researchSource,
-  /remove(?:Stale|Auto|Unavailable).*Url|clearContent\(\).*URL/i,
-  'research implementation must not contain URL-removal behavior',
+  /removeUnavailableResearchResultsFromRow_/,
+  'hourly research must recheck and remove confirmed unavailable candidate URLs',
 );
 assert.doesNotMatch(
   `${codeSource}\n${researchSource}`,

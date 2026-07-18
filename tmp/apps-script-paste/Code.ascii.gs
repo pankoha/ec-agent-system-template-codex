@@ -9,7 +9,7 @@
  */
 
 const AMAZON_ORDER_IMPORTER_CONFIG = {
-  spreadsheetId: '1bQCIpw74Rdz4Db8IXPNZXVCqr4qS3qVhCZY5dxRr6IU',
+  spreadsheetId: '',
   spreadsheetTitle: '\u2605\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868\u2605',
   orderSheetName: '\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868',
   researchSheetName: '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868',
@@ -57,6 +57,7 @@ function onOpen() {
     .addItem('\u6CE8\u6587\u65E5\u3067\u6607\u9806\u30BD\u30FC\u30C8', 'sortAmazonResearchSheetAscending')
     .addItem('2026\u5E746\u670830\u65E5\u4EE5\u964D\u3060\u3051\u8868\u793A', 'showShipDatesFromJune2026')
     .addItem('132\u884C\u76EE\u4EE5\u964D\u3092\u524A\u9664\u6E08\u307F\u306B\u3057\u3066\u524A\u9664', 'deleteRowsFrom132AndRememberOrders')
+    .addItem('\u9078\u629E\u884C\u3092\u524A\u9664\u6E08\u307F\u306B\u3057\u3066\u524A\u9664', 'deleteSelectedRowsAndRememberOrders')
     .addItem('\u65E2\u5B58\u884C\u306E\u6CE8\u6587\u60C5\u5831\u3092Gmail\u304B\u3089\u518D\u4F5C\u6210', 'refreshExistingOrderDetailsFromGmail')
     .addItem('\u78BA\u8A8D\u7528\u304B\u3089Gmail\u518D\u51E6\u7406', 'reprocessReviewRowsFromGmail')
     .addSeparator()
@@ -171,6 +172,24 @@ function deleteRowsFrom132AndRememberOrders() {
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   return deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet, '\u30E1\u30CB\u30E5\u30FC\u5B9F\u884C\u306B\u3088\u308B132\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664');
+}
+
+function deleteSelectedRowsAndRememberOrders() {
+  const spreadsheet = getTargetSpreadsheet_();
+  const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const activeRange = spreadsheet.getActiveRange && spreadsheet.getActiveRange();
+  const activeSheet = activeRange && activeRange.getSheet && activeRange.getSheet();
+  if (!activeRange || activeSheet !== orderSheet) {
+    throw new Error('\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868\u3067\u524A\u9664\u3057\u305F\u3044\u884C\u3092\u9078\u629E\u3057\u3066\u304B\u3089\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002');
+  }
+  return deleteRowsAndRememberOrders_(
+    spreadsheet,
+    orderSheet,
+    activeRange.getRow(),
+    activeRange.getNumRows(),
+    '\u30E1\u30CB\u30E5\u30FC\u5B9F\u884C\u306B\u3088\u308B\u9078\u629E\u884C\u306E\u524A\u9664',
+    false,
+  );
 }
 
 function repairRows2240To2440() {
@@ -652,13 +671,41 @@ function extractOrderNumber_(text) {
 }
 
 function extractProductName_(text) {
+  const labeledProductName = extractLabeledProductName_(text);
+  if (labeledProductName) {
+    return labeledProductName;
+  }
+
   return firstMatch_(text, [
-    /\u5546\s*\u54C1\s*\u540D\s*[:\uFF1A]\s*([\s\S]+?)(?=\n|\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3\s*[:\uFF1A]|S\s*K\s*U\s*[:\uFF1A]|\u6570\u91CF\s*[:\uFF1A]|\u4FA1\u683C\s*[:\uFF1A]|\u7A0E\u91D1\s*[:\uFF1A]|Amazon\u624B\u6570\u6599\s*[:\uFF1A]|\u58F2\s*\u4E0A\s*\u91D1\s*[:\uFF1A]|$)/,
-    /\u5546\s*\u54C1\s*[:\uFF1A]\s*([\s\S]+?)(?=\n|\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3\s*[:\uFF1A]|S\s*K\s*U\s*[:\uFF1A]|\u6570\u91CF\s*[:\uFF1A]|\u4FA1\u683C\s*[:\uFF1A]|\u7A0E\u91D1\s*[:\uFF1A]|Amazon\u624B\u6570\u6599\s*[:\uFF1A]|\u58F2\s*\u4E0A\s*\u91D1\s*[:\uFF1A]|$)/,
     /\u30BF\u30A4\u30C8\u30EB\s*[:\uFF1A]\s*(.+)/,
     /(?:^|\n)\u4EF6\u540D\s*[:\uFF1A]\s*\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*[^\s\u3000]+[\s\u3000]+(.+)/,
     /(?:^|\n)\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*[^\s\u3000]+[\s\u3000]+(.+)/,
   ]).replace(/\s+/g, ' ').trim();
+}
+
+function extractLabeledProductName_(text) {
+  const lines = String(text || '').split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*\u5546\s*\u54C1\s*(?:\u540D)?\s*[:\uFF1A]\s*(.*)$/);
+    if (!match) {
+      continue;
+    }
+
+    const parts = [match[1]];
+    for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+      const nextLine = String(lines[nextIndex] || '').trim();
+      if (!nextLine || isOrderDetailFieldLine_(nextLine)) {
+        break;
+      }
+      parts.push(nextLine);
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+  return '';
+}
+
+function isOrderDetailFieldLine_(line) {
+  return /^(?:\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3|\u72B6\u614B|S\s*K\s*U|\u51FA\u54C1\u8005\s*S\s*K\s*U|\u5546\u54C1\s*S\s*K\s*U|\u6570\u91CF|\u4FA1\u683C|\u7A0E\u91D1|Amazon\u624B\u6570\u6599|\u58F2\s*\u4E0A\s*\u91D1|\u6CE8\u6587\u756A\u53F7|\u6CE8\u6587\u65E5|\u6CE8\u6587\u65E5\u6642|\u3054\u6CE8\u6587\u65E5|\u51FA\s*\u8377\s*\u4E88\s*\u5B9A\s*\u65E5|\u51FA\s*\u8377\s*\u4E88\s*\u5B9A|\u767A\s*\u9001\s*\u4E88\s*\u5B9A\s*\u65E5|\u8CFC\u5165\u8005|\u304A\u5C4A\u3051\u5148)\s*[:\uFF1A]?/i.test(String(line || '').trim());
 }
 
 function extractSku_(text) {
@@ -1193,6 +1240,13 @@ function deleteKnownDeletedOrderRows_(spreadsheet, orderSheet) {
 }
 
 function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
+  if (typeof recordDeletedOrdersSinceLastSnapshot_ === 'function') {
+    recordDeletedOrdersSinceLastSnapshot_(
+      spreadsheet,
+      orderSheet,
+      `${reason || '\u81EA\u52D5\u4FDD\u8B77'} \u524D\u306E\u524A\u9664\u5DEE\u5206\u691C\u77E5`,
+    );
+  }
   if (!AMAZON_ORDER_IMPORTER_CONFIG.autoDeleteProtectedRows) {
     return 0;
   }
@@ -1237,9 +1291,28 @@ function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet,
     return 0;
   }
 
-  const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, startRow, lastRow);
-  appendDeletedOrderRecords_(spreadsheet, records, reason || `${startRow}\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664\u6307\u5B9A`);
-  orderSheet.deleteRows(startRow, lastRow - startRow + 1);
+  return deleteRowsAndRememberOrders_(
+    spreadsheet,
+    orderSheet,
+    startRow,
+    lastRow - startRow + 1,
+    reason || `${startRow}\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664\u6307\u5B9A`,
+    skipManagementSync,
+  );
+}
+
+function deleteRowsAndRememberOrders_(spreadsheet, orderSheet, startRow, rowCount, reason, skipManagementSync) {
+  const firstRow = Math.max(2, startRow || 2);
+  const lastRow = orderSheet.getLastRow();
+  const finalRow = Math.min(lastRow, firstRow + Math.max(0, rowCount || 0) - 1);
+  if (lastRow < firstRow || finalRow < firstRow) {
+    updateKnownOrderSnapshot_(orderSheet);
+    return 0;
+  }
+
+  const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, firstRow, finalRow);
+  appendDeletedOrderRecords_(spreadsheet, records, reason || '\u9078\u629E\u884C\u306E\u524A\u9664\u6307\u5B9A');
+  orderSheet.deleteRows(firstRow, finalRow - firstRow + 1);
   updateKnownOrderSnapshot_(orderSheet);
   if (!skipManagementSync
     && typeof syncResearchManagementByOrderNumber_ === 'function'
@@ -1247,7 +1320,7 @@ function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet,
     && spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName)) {
     syncResearchManagementByOrderNumber_(spreadsheet);
   }
-  return lastRow - startRow + 1;
+  return finalRow - firstRow + 1;
 }
 
 function getOrCreateSheet_(spreadsheet, sheetName) {

@@ -452,8 +452,8 @@ function filterItemsByPriceAndCondition(items, maxPrice, siteName, isDvd, rowDat
     if (!isAllowedSiteCondition_(siteName, item.condition, text, rowData.newOnly)) {
       return false;
     }
-    // \u6307\u793A\u66F816\u30FB31: \u9001\u6599\u4E0D\u660E\u6642\u306F\u5546\u54C1\u4FA1\u683C\u3060\u3051\u3067\u4EEE\u5224\u5B9A\u3057\u3001
-    // \u51FA\u529B\u5074\u3067\u300C\u9001\u6599\u8981\u78BA\u8A8D\u300D\u3092\u660E\u8A18\u3059\u308B\u3002
+    // 指示書16・31: 送料不明時は商品価格だけで仮判定し、
+    // 出力側で「送料要確認」を明記する。
     const total = Number(item.price) + (item.shippingKnown ? Number(item.shipping || 0) : 0);
     return total <= Number(maxPrice);
   });
@@ -472,8 +472,8 @@ function isAllowedSiteCondition_(siteName, condition, text, newOnly) {
     return true;
   }
   if (siteName === 'Jimoty') {
-    // \u6307\u793A\u66F819: \u30B8\u30E2\u30C6\u30A3\u306F\u30B8\u30E3\u30F3\u30AF\u7B49\u306E\u9664\u5916\u8A9E\u304C\u306A\u3051\u308C\u3070\u5019\u88DC\u5316\u3067\u304D\u308B\u3002
-    // \u30B8\u30E3\u30F3\u30AF\u30FB\u8CA9\u58F2\u7D42\u4E86\u306E\u5224\u5B9A\u306F\u547C\u3073\u51FA\u3057\u5143\u3067\u5148\u306B\u5B9F\u65BD\u6E08\u307F\u3002
+    // 指示書19: ジモティはジャンク等の除外語がなければ候補化できる。
+    // ジャンク・販売終了の判定は呼び出し元で先に実施済み。
     return true;
   }
   if (siteName === 'Rakuten') {
@@ -496,11 +496,11 @@ function isCompleteDvdCandidate_(text, expectedVolume) {
   if (new RegExp(`\\u5168\\s*${expectedVolume}\\s*\\u5DFB|${expectedVolume}\\s*\\u5DFB\\s*\\u30BB\\u30C3\\u30C8|\\u5168\\u5DFB`).test(half)) {
     return true;
   }
-  return new RegExp(`\u5168\\s*${expectedVolume}\\s*\u5DFB|${expectedVolume}\\s*\u5DFB\\s*\u30BB\u30C3\u30C8|\u5168\u5DFB`).test(half);
+  return new RegExp(`全\\s*${expectedVolume}\\s*巻|${expectedVolume}\\s*巻\\s*セット|全巻`).test(half);
 }
 
 function isRejectedDvdPaperGoods_(text) {
-  return /\u30D7\u30EC\u30B9\u30D6\u30C3\u30AF|\u30D7\u30EC\u30B9\u30B7\u30FC\u30C8|\u30D1\u30F3\u30D5\u30EC\u30C3\u30C8|\u30D1\u30F3\u30D5\b|\u30C1\u30E9\u30B7|\u3061\u3089\u3057|\u30D5\u30E9\u30A4\u30E4\u30FC|\u6620\u753B\u534A\u5238|\u534A\u5238/i.test(String(text || ''));
+  return /プレスブック|プレスシート|パンフレット|パンフ\b|チラシ|ちらし|フライヤー|映画半券|半券/i.test(String(text || ''));
 }
 
 function expectedVolumeCount_(text) {
@@ -516,7 +516,7 @@ function expectedVolumeCount_(text) {
   if (japaneseMatch) {
     return Number(japaneseMatch[1] || japaneseMatch[2]) || 0;
   }
-  const match = half.match(/\u5168\s*([0-9]+)\s*\u5DFB|([0-9]+)\s*\u5DFB\s*\u30BB\u30C3\u30C8/);
+  const match = half.match(/全\s*([0-9]+)\s*巻|([0-9]+)\s*巻\s*セット/);
   return Number((match && (match[1] || match[2])) || 0);
 }
 
@@ -530,7 +530,7 @@ function buildAmazonAsinResearchLines_(rowData) {
   if (availability.availability !== 'available') {
     return [];
   }
-  return [`ASIN\u78BA\u8A8DURL ${asin}\n${url}`];
+  return [`ASIN確認URL ${asin}\n${url}`];
 }
 
 function inspectResearchUrlAvailability_(url) {
@@ -553,7 +553,7 @@ function inspectResearchUrlAvailability_(url) {
     const html = String(response.getContentText() || '');
     const text = stripResearchHtml_(html);
     if (UNAVAILABLE_PATTERN.test(text)) {
-      return { availability: 'unavailable', status, reason: '\u8CA9\u58F2\u7D42\u4E86\u8868\u793A' };
+      return { availability: 'unavailable', status, reason: '販売終了表示' };
     }
     return { availability: 'available', status, html };
   } catch (error) {
@@ -582,7 +582,7 @@ function inspectResearchUrlsAvailability_(urls) {
       const html = String(response.getContentText() || '');
       const text = stripResearchHtml_(html);
       return UNAVAILABLE_PATTERN.test(text)
-        ? { availability: 'unavailable', status, reason: '\u8CA9\u58F2\u7D42\u4E86\u8868\u793A' }
+        ? { availability: 'unavailable', status, reason: '販売終了表示' }
         : { availability: 'available', status, html };
     });
   } catch (error) {
@@ -597,7 +597,7 @@ function extractAmazonAsinFromResearchRow_(rowData) {
     rowData && rowData.productName,
   ].filter(Boolean).join('\n');
   const patterns = [
-    /\bASIN\s*[:\uFF1A]\s*([A-Z0-9]{10})\b/i,
+    /\bASIN\s*[:：]\s*([A-Z0-9]{10})\b/i,
     /\/(?:dp|gp\/product)\/([A-Z0-9]{10})\b/i,
     /(?:^|[^A-Z0-9])(B[0-9A-Z]{9})(?=$|[^A-Z0-9])/i,
   ];
@@ -679,9 +679,9 @@ function removeUnavailableResearchResultsFromRow_(spreadsheet, sheet, rowNumber,
         summary.removals.push({ row: rowNumber, column: columnNumber, url, reason: inspected.reason || '' });
         writeSynchronizationCheck_(
           spreadsheet,
-          '\u58F2\u308A\u5207\u308C\u5019\u88DC\u524A\u9664',
+          '売り切れ候補削除',
           rowData && rowData.orderNumber ? rowData.orderNumber : '',
-          `${url} \u3092\u524A\u9664\u3057\u307E\u3057\u305F\uFF08${inspected.reason || '\u8CA9\u58F2\u7D42\u4E86'}\uFF09`,
+          `${url} を削除しました（${inspected.reason || '販売終了'}）`,
         );
         return;
       }
@@ -700,7 +700,7 @@ function removeUnavailableResearchResultsFromRow_(spreadsheet, sheet, rowNumber,
 }
 
 function appendUrlToMainSheet_(rowNumber, columnNumber, resultLines) {
-  Logger.log(`\u5019\u88DCURL\u306E\u8FFD\u8A18\u5148\u306F${RESEARCH_AUTOMATION_CONFIG.sheetName}\u306E\u307F\u306B\u9650\u5B9A\u3057\u3066\u3044\u308B\u305F\u3081\u3001\u30E1\u30A4\u30F3\u30B7\u30FC\u30C8\u3078\u306E\u8FFD\u8A18\u306F\u30B9\u30AD\u30C3\u30D7\u3057\u307E\u3057\u305F\u3002`);
+  Logger.log(`候補URLの追記先は${RESEARCH_AUTOMATION_CONFIG.sheetName}のみに限定しているため、メインシートへの追記はスキップしました。`);
   return 0;
 }
 

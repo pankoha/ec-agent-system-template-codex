@@ -86,6 +86,8 @@ Research_3.gs
 Research_4.gs
 ```
 
+コードにスプレッドシートIDを直接書き込む必要はありません。スプレッドシートから開いたApps Scriptで初期設定を実行すると、そのアカウント専用のIDがスクリプトプロパティ `TARGET_SPREADSHEET_ID` に保存されます。
+
 ## 5. Code.gsを貼り付ける
 
 文字化け防止のため、分割貼り付け用のASCII版を使います。
@@ -248,6 +250,21 @@ syncResearchManagementSheet
 researchAllVisibleManagementRowsNow
   リサーチ管理表の表示行を検索する
 ```
+
+### 商品名が途中で切れている行を直す場合
+
+Gmail本文内の商品名が途中で改行されていると、古いコードでは `注文確定商品リサーチ表` のB列「商品名」とD列「検索ワード」が途中で止まることがあります。
+
+この場合は最新版のコードをApps Scriptへ貼り直したあと、次の順で実行してください。
+
+```text
+refreshExistingOrderDetailsFromGmail
+syncResearchManagementSheet
+researchAllVisibleManagementRowsNow
+```
+
+1ファイル貼り付けで更新する場合は、`apps-script/amazon-order-importer/Code.paste.ascii.gs` をApps Scriptの `Code.gs` に貼り付けて保存してください。
+分割貼り付けで更新する場合は、`Code.gs` と `Research.gs` を最新版に差し替えてください。
 
 ## 14. アカウントを増やすときの考え方
 
