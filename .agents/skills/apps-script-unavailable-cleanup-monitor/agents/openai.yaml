@@ -1,0 +1,4 @@
+interface:
+  display_name: "Apps Script 売り切れ監視"
+  short_description: "売り切れ候補のdry-runとapply完了を継続監視"
+  default_prompt: "Apps Scriptの売り切れ候補クリーンアップを監視し、完了まで処理してください。"

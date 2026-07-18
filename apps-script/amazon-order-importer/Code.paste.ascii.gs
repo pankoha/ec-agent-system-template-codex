@@ -9,7 +9,7 @@
  */
 
 const AMAZON_ORDER_IMPORTER_CONFIG = {
-  spreadsheetId: '1bQCIpw74Rdz4Db8IXPNZXVCqr4qS3qVhCZY5dxRr6IU',
+  spreadsheetId: '',
   spreadsheetTitle: '\u2605\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868\u2605',
   orderSheetName: '\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868',
   researchSheetName: '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868',
@@ -57,6 +57,7 @@ function onOpen() {
     .addItem('\u6CE8\u6587\u65E5\u3067\u6607\u9806\u30BD\u30FC\u30C8', 'sortAmazonResearchSheetAscending')
     .addItem('2026\u5E746\u670830\u65E5\u4EE5\u964D\u3060\u3051\u8868\u793A', 'showShipDatesFromJune2026')
     .addItem('132\u884C\u76EE\u4EE5\u964D\u3092\u524A\u9664\u6E08\u307F\u306B\u3057\u3066\u524A\u9664', 'deleteRowsFrom132AndRememberOrders')
+    .addItem('\u9078\u629E\u884C\u3092\u524A\u9664\u6E08\u307F\u306B\u3057\u3066\u524A\u9664', 'deleteSelectedRowsAndRememberOrders')
     .addItem('\u65E2\u5B58\u884C\u306E\u6CE8\u6587\u60C5\u5831\u3092Gmail\u304B\u3089\u518D\u4F5C\u6210', 'refreshExistingOrderDetailsFromGmail')
     .addItem('\u78BA\u8A8D\u7528\u304B\u3089Gmail\u518D\u51E6\u7406', 'reprocessReviewRowsFromGmail')
     .addSeparator()
@@ -171,6 +172,24 @@ function deleteRowsFrom132AndRememberOrders() {
   const spreadsheet = getTargetSpreadsheet_();
   const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
   return deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet, '\u30E1\u30CB\u30E5\u30FC\u5B9F\u884C\u306B\u3088\u308B132\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664');
+}
+
+function deleteSelectedRowsAndRememberOrders() {
+  const spreadsheet = getTargetSpreadsheet_();
+  const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+  const activeRange = spreadsheet.getActiveRange && spreadsheet.getActiveRange();
+  const activeSheet = activeRange && activeRange.getSheet && activeRange.getSheet();
+  if (!activeRange || activeSheet !== orderSheet) {
+    throw new Error('\u6CE8\u6587\u78BA\u5B9A\u5546\u54C1\u30EA\u30B5\u30FC\u30C1\u8868\u3067\u524A\u9664\u3057\u305F\u3044\u884C\u3092\u9078\u629E\u3057\u3066\u304B\u3089\u5B9F\u884C\u3057\u3066\u304F\u3060\u3055\u3044\u3002');
+  }
+  return deleteRowsAndRememberOrders_(
+    spreadsheet,
+    orderSheet,
+    activeRange.getRow(),
+    activeRange.getNumRows(),
+    '\u30E1\u30CB\u30E5\u30FC\u5B9F\u884C\u306B\u3088\u308B\u9078\u629E\u884C\u306E\u524A\u9664',
+    false,
+  );
 }
 
 function repairRows2240To2440() {
@@ -652,13 +671,41 @@ function extractOrderNumber_(text) {
 }
 
 function extractProductName_(text) {
+  const labeledProductName = extractLabeledProductName_(text);
+  if (labeledProductName) {
+    return labeledProductName;
+  }
+
   return firstMatch_(text, [
-    /\u5546\s*\u54C1\s*\u540D\s*[:\uFF1A]\s*([\s\S]+?)(?=\n|\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3\s*[:\uFF1A]|S\s*K\s*U\s*[:\uFF1A]|\u6570\u91CF\s*[:\uFF1A]|\u4FA1\u683C\s*[:\uFF1A]|\u7A0E\u91D1\s*[:\uFF1A]|Amazon\u624B\u6570\u6599\s*[:\uFF1A]|\u58F2\s*\u4E0A\s*\u91D1\s*[:\uFF1A]|$)/,
-    /\u5546\s*\u54C1\s*[:\uFF1A]\s*([\s\S]+?)(?=\n|\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3\s*[:\uFF1A]|S\s*K\s*U\s*[:\uFF1A]|\u6570\u91CF\s*[:\uFF1A]|\u4FA1\u683C\s*[:\uFF1A]|\u7A0E\u91D1\s*[:\uFF1A]|Amazon\u624B\u6570\u6599\s*[:\uFF1A]|\u58F2\s*\u4E0A\s*\u91D1\s*[:\uFF1A]|$)/,
     /\u30BF\u30A4\u30C8\u30EB\s*[:\uFF1A]\s*(.+)/,
     /(?:^|\n)\u4EF6\u540D\s*[:\uFF1A]\s*\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*[^\s\u3000]+[\s\u3000]+(.+)/,
     /(?:^|\n)\u6CE8\u6587\u78BA\u5B9A\s*[:\uFF1A]\s*[^\s\u3000]+[\s\u3000]+(.+)/,
   ]).replace(/\s+/g, ' ').trim();
+}
+
+function extractLabeledProductName_(text) {
+  const lines = String(text || '').split('\n');
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*\u5546\s*\u54C1\s*(?:\u540D)?\s*[:\uFF1A]\s*(.*)$/);
+    if (!match) {
+      continue;
+    }
+
+    const parts = [match[1]];
+    for (let nextIndex = index + 1; nextIndex < lines.length; nextIndex += 1) {
+      const nextLine = String(lines[nextIndex] || '').trim();
+      if (!nextLine || isOrderDetailFieldLine_(nextLine)) {
+        break;
+      }
+      parts.push(nextLine);
+    }
+    return parts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+  return '';
+}
+
+function isOrderDetailFieldLine_(line) {
+  return /^(?:\u30B3\u30F3\u30C7\u30A3\u30B7\u30E7\u30F3|\u72B6\u614B|S\s*K\s*U|\u51FA\u54C1\u8005\s*S\s*K\s*U|\u5546\u54C1\s*S\s*K\s*U|\u6570\u91CF|\u4FA1\u683C|\u7A0E\u91D1|Amazon\u624B\u6570\u6599|\u58F2\s*\u4E0A\s*\u91D1|\u6CE8\u6587\u756A\u53F7|\u6CE8\u6587\u65E5|\u6CE8\u6587\u65E5\u6642|\u3054\u6CE8\u6587\u65E5|\u51FA\s*\u8377\s*\u4E88\s*\u5B9A\s*\u65E5|\u51FA\s*\u8377\s*\u4E88\s*\u5B9A|\u767A\s*\u9001\s*\u4E88\s*\u5B9A\s*\u65E5|\u8CFC\u5165\u8005|\u304A\u5C4A\u3051\u5148)\s*[:\uFF1A]?/i.test(String(line || '').trim());
 }
 
 function extractSku_(text) {
@@ -1193,6 +1240,13 @@ function deleteKnownDeletedOrderRows_(spreadsheet, orderSheet) {
 }
 
 function enforceProtectedDeletedRows_(spreadsheet, orderSheet, reason) {
+  if (typeof recordDeletedOrdersSinceLastSnapshot_ === 'function') {
+    recordDeletedOrdersSinceLastSnapshot_(
+      spreadsheet,
+      orderSheet,
+      `${reason || '\u81EA\u52D5\u4FDD\u8B77'} \u524D\u306E\u524A\u9664\u5DEE\u5206\u691C\u77E5`,
+    );
+  }
   if (!AMAZON_ORDER_IMPORTER_CONFIG.autoDeleteProtectedRows) {
     return 0;
   }
@@ -1237,9 +1291,28 @@ function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet,
     return 0;
   }
 
-  const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, startRow, lastRow);
-  appendDeletedOrderRecords_(spreadsheet, records, reason || `${startRow}\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664\u6307\u5B9A`);
-  orderSheet.deleteRows(startRow, lastRow - startRow + 1);
+  return deleteRowsAndRememberOrders_(
+    spreadsheet,
+    orderSheet,
+    startRow,
+    lastRow - startRow + 1,
+    reason || `${startRow}\u884C\u76EE\u4EE5\u964D\u306E\u524A\u9664\u6307\u5B9A`,
+    skipManagementSync,
+  );
+}
+
+function deleteRowsAndRememberOrders_(spreadsheet, orderSheet, startRow, rowCount, reason, skipManagementSync) {
+  const firstRow = Math.max(2, startRow || 2);
+  const lastRow = orderSheet.getLastRow();
+  const finalRow = Math.min(lastRow, firstRow + Math.max(0, rowCount || 0) - 1);
+  if (lastRow < firstRow || finalRow < firstRow) {
+    updateKnownOrderSnapshot_(orderSheet);
+    return 0;
+  }
+
+  const records = getOrderNumberRecordsFromOrderSheet_(orderSheet, firstRow, finalRow);
+  appendDeletedOrderRecords_(spreadsheet, records, reason || '\u9078\u629E\u884C\u306E\u524A\u9664\u6307\u5B9A');
+  orderSheet.deleteRows(firstRow, finalRow - firstRow + 1);
   updateKnownOrderSnapshot_(orderSheet);
   if (!skipManagementSync
     && typeof syncResearchManagementByOrderNumber_ === 'function'
@@ -1247,7 +1320,7 @@ function deleteRowsFromProtectedStartAndRememberOrders_(spreadsheet, orderSheet,
     && spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName)) {
     syncResearchManagementByOrderNumber_(spreadsheet);
   }
-  return lastRow - startRow + 1;
+  return finalRow - firstRow + 1;
 }
 
 function getOrCreateSheet_(spreadsheet, sheetName) {
@@ -1347,7 +1420,8 @@ function testKeywordGeneration() {
  *
  * Invariants:
  * - Every visible row remains eligible on every hourly run, regardless of status.
- * - Existing URLs are never deleted or overwritten.
+ * - Existing URLs are rechecked on the hourly run; confirmed unavailable results are removed.
+ * - Unknown availability (for example 403 or a temporary fetch failure) is preserved.
  * - Only canonical, new, non-duplicate, better product URLs are appended.
  * - A candidate must be within the C-column sales amount.
  * - SKU containing "muza" accepts new items only.
@@ -1356,8 +1430,8 @@ function testKeywordGeneration() {
 const RESEARCH_AUTOMATION_CONFIG = {
   sheetName: '\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868',
   reviewSheetName: '\u78BA\u8A8D\u7528',
-  maxRuntimeMs: 270000,
-  maxRowsPerRun: 10000,
+  maxRuntimeMs: 180000,
+  maxRowsPerRun: 25,
   requestTimeoutFallback: 30000,
   userAgent: 'Mozilla/5.0 (compatible; GoogleAppsScript sourcing-research/1.0)',
 };
@@ -1411,7 +1485,7 @@ const RESEARCH_STATUS = {
 
 const JUNK_PATTERN = /\u30B8\u30E3\u30F3\u30AF|\u30B8\u30E3\u30F3\u30AF\u54C1|\u52D5\u4F5C\u672A\u78BA\u8A8D|\u52D5\u4F5C\u672A\u30C1\u30A7\u30C3\u30AF|\u4E0D\u52D5\u54C1?|\u901A\u96FB\u4E0D\u53EF|\u901A\u96FB\u672A\u78BA\u8A8D|\u90E8\u54C1\u53D6\u308A|\u7834\u640D(?:\u54C1|\u3042\u308A)?|\u58CA\u308C\u3066\u3044\u307E\u3059|\u4F7F\u3048\u307E\u305B\u3093|\u8A33\u3042\u308A|\u96E3\u3042\u308A|\u73FE\u72B6\u54C1|\u4FEE\u7406\u524D\u63D0|\u518D\u751F\u4E0D\u53EF|\u8AAD\u307F\u8FBC\u307F\u4E0D\u53EF|\u8AAD\u8FBC\u4E0D\u53EF|\u8996\u8074\u4E0D\u53EF|\u6B20\u54C1(?:\u3042\u308A)?|\u30C7\u30A3\u30B9\u30AF\u6B20\u54C1|\u5DFB\u6570\u4E0D\u8DB3|\u5DFB\u629C\u3051|\u4E00\u90E8\u6B20\u54C1/i;
 const JIMOTY_REJECT_PATTERN = /\u30B8\u30E3\u30F3\u30AF|\u52D5\u4F5C\u672A\u78BA\u8A8D|\u4E0D\u52D5\u54C1?|\u901A\u96FB\u4E0D\u53EF|\u90E8\u54C1\u53D6\u308A|\u7834\u640D|\u58CA\u308C\u3066\u3044\u307E\u3059|\u4F7F\u3048\u307E\u305B\u3093|\u4FEE\u7406\u524D\u63D0|\u518D\u751F\u4E0D\u53EF|\u8AAD\u307F\u8FBC\u307F\u4E0D\u53EF|\u8AAD\u8FBC\u4E0D\u53EF|\u8996\u8074\u4E0D\u53EF|\u6B20\u54C1(?:\u3042\u308A)?|\u30C7\u30A3\u30B9\u30AF\u6B20\u54C1|\u5DFB\u6570\u4E0D\u8DB3|\u5DFB\u629C\u3051|\u4E00\u90E8\u6B20\u54C1/i;
-const UNAVAILABLE_PATTERN = /\u58F2\u308A\u5207\u308C|\u58F2\u5207|SOLD\s*OUT|\bSOLD\b|\u8CA9\u58F2\u7D42\u4E86|\u63B2\u8F09\u7D42\u4E86|\u30AA\u30FC\u30AF\u30B7\u30E7\u30F3.{0,8}\u7D42\u4E86|\u3053\u306E\u5546\u54C1\u306F\u524A\u9664|\u30DA\u30FC\u30B8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093|404\s*Not\s*Found/i;
+const UNAVAILABLE_PATTERN = /\u58F2\u308A\u5207\u308C|\u58F2\u5207\u308C|\u58F2\u5207|SOLD[\s_-]*OUT|\bSOLD\b|\u8CA9\u58F2\u7D42\u4E86|\u63B2\u8F09\u7D42\u4E86|\u30AA\u30FC\u30AF\u30B7\u30E7\u30F3.{0,8}\u7D42\u4E86|\u304A\u554F\u3044\u5408\u308F\u305B\u306E\u53D7\u3051(?:\u4ED8\u3051|\u3064\u3051|\u4ED8)\u306F\u7D42\u4E86\u3057\u307E\u3057\u305F|\u3053\u306E\u5546\u54C1\u306F\u524A\u9664|\u30DA\u30FC\u30B8\u304C\u898B\u3064\u304B\u308A\u307E\u305B\u3093|404\s*Not\s*Found|410\s*Gone/i;
 const NEW_CONDITION_PATTERN = /\u65B0\u54C1|\u65B0\u54C1\u672A\u4F7F\u7528|\u672A\u4F7F\u7528\u54C1|\u672A\u958B\u5C01|brand\s*new|new\b/i;
 const USED_CONDITION_PATTERN = /\u4E2D\u53E4|\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u30A2\u30C3\u30D7|\u4F7F\u7528\u6E08|used\b/i;
 const SEARCH_RESULT_NOISE_PATTERN = /\/com\/assets\/|\/search\/|\/category\/|favicon\.ico(?:$|[?#])/i;
@@ -1430,6 +1504,13 @@ const RESEARCH_SITES = [
     column: 7,
     resultHost: /page\.auctions\.yahoo\.co\.jp\/jp\/auction\//i,
     searchUrl: (keyword, maxPrice) => `https://auctions.yahoo.co.jp/search/search?p=${encodeURIComponent(keyword)}&aucmaxprice=${Math.max(1, maxPrice)}`,
+  },
+  {
+    key: 'YahooFleamarket',
+    label: 'Yahoo!\u30D5\u30EA\u30DE',
+    column: 7,
+    resultHost: /paypayfleamarket\.yahoo\.co\.jp\/item\//i,
+    searchUrl: (keyword, maxPrice) => `https://paypayfleamarket.yahoo.co.jp/search/${encodeURIComponent(keyword)}?maxPrice=${Math.max(1, maxPrice)}`,
   },
   {
     key: 'Mercari',
@@ -1835,6 +1916,9 @@ function researchResultColumn_(columns, siteName) {
     Amazon: 'Amazon',
     Yahoo: 'Yahoo',
     '\u30E4\u30D5\u30AA\u30AF': 'Yahoo',
+    YahooFleamarket: 'Yahoo',
+    'Yahoo!\u30D5\u30EA\u30DE': 'Yahoo',
+    'Yahoo\u30D5\u30EA\u30DE': 'Yahoo',
     Mercari: 'Mercari',
     '\u30E1\u30EB\u30AB\u30EA': 'Mercari',
     Jimoty: 'Jimoty',
@@ -2161,15 +2245,20 @@ function researchListedItemsHourly() {
     const orderedRows = rotateRows_(visibleRows, cursor);
     let processed = 0;
     let added = 0;
+    let removed = 0;
     let errors = 0;
+    const runBudgetMs = Math.min(Number(RESEARCH_AUTOMATION_CONFIG.maxRuntimeMs) || 60000, 60000);
+    const maxRowsThisRun = Math.min(Number(RESEARCH_AUTOMATION_CONFIG.maxRowsPerRun) || 1, 1);
+    const deadlineMs = startedAt + runBudgetMs;
 
     for (let index = 0; index < orderedRows.length; index += 1) {
-      if (processed >= RESEARCH_AUTOMATION_CONFIG.maxRowsPerRun || Date.now() - startedAt >= RESEARCH_AUTOMATION_CONFIG.maxRuntimeMs) {
+      if (processed >= maxRowsThisRun || isResearchDeadlineReached_({ deadlineMs })) {
         break;
       }
       const rowNumber = orderedRows[index];
       const values = sheet.getRange(rowNumber, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
       const rowData = buildResearchRowDataFromSheet_(rowNumber, values, columns, sheet);
+      rowData.deadlineMs = deadlineMs;
       if (!rowData.keywordLines.length || !rowData.maxPrice) {
         setManagedResearchStatusAtColumn_(sheet, rowNumber, columns.status, RESEARCH_STATUS.review);
         writeResearchCheck_(rowData, '\u5165\u529B\u4E0D\u8DB3', 'C\u5217\u306E\u58F2\u4E0A\u91D1\u307E\u305F\u306FD\u5217\u306E\u691C\u7D22\u30EF\u30FC\u30C9\u304C\u3042\u308A\u307E\u305B\u3093\u3002', '');
@@ -2190,6 +2279,8 @@ function researchListedItemsHourly() {
 
       setManagedResearchStatusAtColumn_(sheet, rowNumber, columns.status, RESEARCH_STATUS.running);
       try {
+        const cleanup = removeUnavailableResearchResultsFromRow_(spreadsheet, sheet, rowNumber, columns, rowData);
+        removed += cleanup.removed;
         const result = researchOneOrder(rowData);
         added += result.added;
         const hasCandidates = rowHasResearchCandidates_(sheet, rowNumber, columns)
@@ -2210,6 +2301,9 @@ function researchListedItemsHourly() {
         }, managementContext);
       }
       processed += 1;
+      if (visibleRows.length) {
+        properties.setProperty(cursorKey, String((cursor + processed) % visibleRows.length));
+      }
     }
 
     if (visibleRows.length) {
@@ -2222,13 +2316,69 @@ function researchListedItemsHourly() {
 }
 
 function researchAllVisibleManagementRowsNow() {
-  PropertiesService.getScriptProperties().setProperty('managementResearchVisibleRowCursor', '0');
   Logger.log('\u30EA\u30B5\u30FC\u30C1\u7BA1\u7406\u8868\u306E\u8868\u793A\u4E2D\u306E\u5168\u884C\u3092\u3001\u73FE\u5728\u306E\u5B9F\u884C\u3067\u5148\u982D\u304B\u3089\u30EA\u30B5\u30FC\u30C1\u3057\u307E\u3059\u3002');
   return researchListedItemsHourly();
 }
 
+function researchOrder25026888213232625Now() {
+  return researchManagementOrderNumberNow_('250-2688821-3232625');
+}
+
+function researchOrder50322812319095046Now() {
+  return researchManagementOrderNumberNow_('503-2281231-9095046');
+}
+
+function researchOrder24947864940001414Now() {
+  return researchManagementOrderNumberNow_('249-4786494-0001414');
+}
+
+function researchManagementOrderNumberNow_(orderNumber) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) {
+    Logger.log('Another research run is active. Skipped.');
+    return { processed: 0, added: 0, errors: 0 };
+  }
+
+  try {
+    const spreadsheet = getTargetSpreadsheet_();
+    const syncResult = syncResearchManagementByOrderNumber_(spreadsheet);
+    if (!syncResult.available) {
+      return { processed: 0, added: 0, errors: 0 };
+    }
+    const managementContext = buildResearchManagementContext_(spreadsheet);
+    const found = findResearchManagementRowsByOrderNumber_(spreadsheet, orderNumber, managementContext);
+    if (!found.sheet || found.rows.length !== 1) {
+      writeSynchronizationCheck_(spreadsheet, 'TARGET_ORDER_NOT_FOUND', orderNumber, 'Target order was not found as a unique row in the research management sheet.');
+      return { processed: 0, added: 0, errors: 1 };
+    }
+
+    const rowNumber = found.rows[0];
+    const values = found.sheet.getRange(rowNumber, 1, 1, Math.max(1, found.sheet.getLastColumn())).getValues()[0];
+    const rowData = buildResearchRowDataFromSheet_(rowNumber, values, found.columns, found.sheet);
+    rowData.deadlineMs = Date.now() + 150000;
+    setManagedResearchStatusAtColumn_(found.sheet, rowNumber, found.columns.status, RESEARCH_STATUS.running);
+    const result = researchOneOrder(rowData);
+    const hasCandidates = rowHasResearchCandidates_(found.sheet, rowNumber, found.columns)
+      || Object.keys(result.resultsBySite || {}).some((key) => (result.resultsBySite[key] || []).length);
+    result.status = hasCandidates ? RESEARCH_STATUS.found : (result.needsReview ? RESEARCH_STATUS.review : RESEARCH_STATUS.empty);
+    setManagedResearchStatusAtColumn_(found.sheet, rowNumber, found.columns.status, result.status);
+    updateResearchManagementRowByOrderNumber(orderNumber, result, managementContext);
+    Logger.log(`Target research done: ${orderNumber} / added ${result.added}`);
+    return { processed: 1, added: result.added, errors: 0 };
+  } catch (error) {
+    Logger.log(`Target research error: ${error && error.message ? error.message : error}`);
+    return { processed: 0, added: 0, errors: 1 };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function setManagedResearchStatus_(sheet, rowNumber, nextStatus) {
   return setManagedResearchStatusAtColumn_(sheet, rowNumber, 5, nextStatus);
+}
+
+function isResearchDeadlineReached_(rowData) {
+  return rowData && rowData.deadlineMs && Date.now() >= rowData.deadlineMs;
 }
 
 function setManagedResearchStatusAtColumn_(sheet, rowNumber, columnNumber, nextStatus) {
@@ -2346,6 +2496,9 @@ function researchOneOrder(rowData) {
   const memos = [];
 
   RESEARCH_SITES.forEach((site) => {
+    if (isResearchDeadlineReached_(rowData)) {
+      return;
+    }
     const siteResult = researchSiteForKeywords_(site, rowData);
     const accepted = uniqueAcceptedResearchItems_(
       filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData),
@@ -2382,6 +2535,9 @@ function researchOneOrder(rowData) {
 
   const otherItems = [];
   OTHER_RESEARCH_SITES.forEach((site) => {
+    if (isResearchDeadlineReached_(rowData)) {
+      return;
+    }
     const siteResult = researchSiteForKeywords_(site, rowData);
     const accepted = uniqueAcceptedResearchItems_(
       filterItemsByPriceAndCondition(siteResult.items, rowData.maxPrice, site.key, rowData.isDvd, rowData),
@@ -2468,8 +2624,8 @@ function searchSingleSite_(siteKey, keyword, maxPrice, isDvd) {
 }
 
 function searchSiteDefinition_(site, keyword, maxPrice, isDvd) {
-  const result = fetchSearchResults_(site, site.searchUrl(keyword, maxPrice), keyword, maxPrice);
   const rowData = { expectedVolume: 0, newOnly: false };
+  const result = fetchSearchResults_(site, site.searchUrl(keyword, maxPrice), keyword, maxPrice, rowData);
   return filterItemsByPriceAndCondition(result.items, maxPrice, site.key, isDvd, rowData);
 }
 
@@ -2485,10 +2641,13 @@ function researchSiteForKeywords_(site, rowData) {
   let rejectedForMissingData = 0;
   let manualUrl = '';
 
-  rowData.keywordLines.forEach((keyword) => {
+  expandedResearchKeywordsForSite_(site, rowData).forEach((keyword) => {
+    if (isResearchDeadlineReached_(rowData)) {
+      return;
+    }
     const url = site.searchUrl(keyword, rowData.maxPrice);
     manualUrl = manualUrl || url;
-    const result = fetchSearchResults_(site, url, keyword, rowData.maxPrice);
+    const result = fetchSearchResults_(site, url, keyword, rowData.maxPrice, rowData);
     ok = ok && result.ok;
     rejectedForMissingData += result.rejectedForMissingData;
     result.items.forEach((item) => combined.push(item));
@@ -2497,7 +2656,35 @@ function researchSiteForKeywords_(site, rowData) {
   return { ok, items: combined, rejectedForMissingData, manualUrl };
 }
 
-function fetchSearchResults_(site, url, keyword, maxPrice) {
+function expandedResearchKeywordsForSite_(site, rowData) {
+  const keywords = (rowData && rowData.keywordLines) || [];
+  const extra = [];
+  if (site && site.key === 'Mercari' && rowData && rowData.isDvd) {
+    const broadTitle = broadDvdResearchTitle_(rowData.productName || keywords.join(' '));
+    if (broadTitle) {
+      extra.push(broadTitle, `${broadTitle} \u5168\u5DFB`, `${broadTitle} \u30EC\u30F3\u30BF\u30EB`, `${broadTitle} DVD`);
+    }
+    return uniqueResearchKeywordLines_(extra.concat(keywords)).slice(0, 4);
+  }
+  return uniqueResearchKeywordLines_(keywords.concat(extra));
+}
+
+function uniqueResearchKeywordLines_(keywords) {
+  const seen = new Set();
+  return (keywords || []).map((keyword) => String(keyword || '').trim()).filter((keyword) => {
+    const key = normalizeResearchText_(keyword);
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function fetchSearchResults_(site, url, keyword, maxPrice, rowData) {
+  if (isResearchDeadlineReached_(rowData)) {
+    return { ok: true, items: [], rejectedForMissingData: 0 };
+  }
   try {
     const response = UrlFetchApp.fetch(url, {
       muteHttpExceptions: true,
@@ -2511,14 +2698,95 @@ function fetchSearchResults_(site, url, keyword, maxPrice) {
     if (status < 200 || status >= 400) {
       return { ok: false, items: [], rejectedForMissingData: 0 };
     }
-    return extractCandidateItems_(String(response.getContentText() || ''), site, keyword);
+    const extracted = extractCandidateItems_(String(response.getContentText() || ''), site, keyword);
+    const enriched = enrichSearchResultsFromProductPages_(extracted, site, keyword, rowData || {});
+    enriched.items = enriched.items.filter((item) => isCompatibleResearchProductCandidate_(item, rowData || {}, keyword));
+    return enriched;
   } catch (error) {
     return { ok: false, items: [], rejectedForMissingData: 0 };
   }
 }
 
+function enrichSearchResultsFromProductPages_(extracted, site, keyword, rowData) {
+  const items = [];
+  const seen = new Set();
+  const sourceItems = (extracted.items || []).concat(extracted.needsDetail || []);
+  let rejectedForAvailability = 0;
+  const detailFetchLimit = site.key === 'Rakuten' ? 18 : 12;
+
+  sourceItems.slice(0, detailFetchLimit).forEach((item) => {
+    if (isResearchDeadlineReached_(rowData || {})) {
+      rejectedForAvailability += 1;
+      return;
+    }
+    const canonicalUrl = canonicalResearchUrl_(item.url) || item.url;
+    if (!canonicalUrl || seen.has(canonicalUrl)) {
+      return;
+    }
+    seen.add(canonicalUrl);
+    const detail = fetchResearchProductDetail_(item, site, keyword);
+    if (detail.availability === 'available' && detail.item && detail.item.price) {
+      items.push(detail.item);
+    } else {
+      rejectedForAvailability += 1;
+    }
+  });
+  rejectedForAvailability += Math.max(0, sourceItems.length - detailFetchLimit);
+
+  return {
+    ok: extracted.ok,
+    items,
+    rejectedForMissingData: (extracted.rejectedForMissingData || 0) + rejectedForAvailability,
+  };
+}
+
+function shouldFetchResearchProductDetail_(item, site, rowData) {
+  if (!item || !item.url) {
+    return false;
+  }
+  if (!item.price) {
+    return true;
+  }
+  const text = `${item.title || ''} ${item.condition || ''} ${item.contextText || ''}`;
+  return site.key === 'Rakuten'
+    && rowData
+    && rowData.isDvd
+    && rowData.expectedVolume
+    && !isCompleteDvdCandidate_(text, rowData.expectedVolume);
+}
+
+function fetchResearchProductDetail_(item, site, keyword) {
+  const inspected = inspectResearchUrlAvailability_(item.url);
+  if (inspected.availability !== 'available') {
+    return inspected;
+  }
+  try {
+    const html = inspected.html;
+    const title = extractResearchDetailTitle_(html) || item.title || '';
+    if (!title || !matchesResearchKeyword_(title, keyword)) {
+      return { availability: 'unknown', status: inspected.status };
+    }
+    const shipping = shippingNear_(html);
+    return { availability: 'available', status: inspected.status, item: {
+      site: item.site,
+      siteLabel: item.siteLabel,
+      title,
+      url: item.url,
+      price: priceNear_(html) || item.price || 0,
+      shipping: shipping.known ? shipping.amount : item.shipping,
+      shippingKnown: shipping.known || item.shippingKnown,
+      condition: conditionNear_(html, site.key) || item.condition,
+      contextText: stripResearchHtml_(html).slice(0, 8000),
+      availability: 'available',
+    } };
+  } catch (error) {
+    return { availability: 'unknown', error: String(error) };
+  }
+}
+
 function extractCandidateItems_(html, site, keyword) {
   const items = [];
+  const needsDetail = [];
   const seen = new Set();
   let rejectedForMissingData = 0;
   const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -2542,6 +2810,7 @@ function extractCandidateItems_(html, site, keyword) {
       contextStart,
       contextEnd,
     );
+    const forwardContext = String(html).slice(match.index, contextEnd);
     const anchorTitle = stripResearchHtml_(match[2]);
     const altTitle = extractResearchAnchorAttributeTitle_(match[0]);
     const title = (anchorTitle || altTitle || stripResearchHtml_(context).slice(0, 300)).trim();
@@ -2550,11 +2819,21 @@ function extractCandidateItems_(html, site, keyword) {
     }
     seen.add(url);
 
-    const price = priceNear_(context);
-    const shipping = shippingNear_(context);
-    const condition = conditionNear_(context, site.key);
+    const price = priceNear_(forwardContext) || priceNear_(context);
+    const shipping = shippingNear_(forwardContext);
+    const condition = conditionNear_(forwardContext, site.key);
     if (!price) {
-      rejectedForMissingData += 1;
+      needsDetail.push({
+        site: site.key,
+        siteLabel: site.label,
+        title,
+        url,
+        price,
+        shipping: shipping.amount,
+        shippingKnown: shipping.known,
+        condition,
+        contextText: stripResearchHtml_(context),
+      });
       continue;
     }
     items.push({
@@ -2570,7 +2849,246 @@ function extractCandidateItems_(html, site, keyword) {
     });
   }
 
-  return { ok: true, items, rejectedForMissingData };
+  extractLinkedTextCandidateItems_(html, site, keyword, seen).forEach((item) => {
+    if (items.length >= 40) {
+      return;
+    }
+    if (!item.price) {
+      needsDetail.push(item);
+      return;
+    }
+    items.push(item);
+  });
+  extractStructuredCandidateItems_(html, site, keyword, seen).forEach((item) => {
+    if (items.length >= 40) {
+      return;
+    }
+    if (!item.price) {
+      needsDetail.push(item);
+      return;
+    }
+    items.push(item);
+  });
+  extractUrlOnlyCandidateItems_(html, site, keyword, seen).forEach((item) => {
+    if (items.length + needsDetail.length >= 60) {
+      return;
+    }
+    if (!item.price) {
+      needsDetail.push(item);
+      return;
+    }
+    items.push(item);
+  });
+
+  return { ok: true, items, needsDetail, rejectedForMissingData };
+}
+
+function extractLinkedTextCandidateItems_(html, site, keyword, seen) {
+  const items = [];
+  const htmlText = String(html || '').replace(/\\u002F/g, '/').replace(/\\\//g, '/');
+  const escapedUrlPattern = /https?:\/\/[^"'\s<>]+/gi;
+  let match;
+  while ((match = escapedUrlPattern.exec(htmlText)) !== null && items.length < 40) {
+    const rawUrl = match[0];
+    const url = normalizeResearchProductUrl_(rawUrl, site.key);
+    if (!url || seen.has(url) || !site.resultHost.test(url)) {
+      continue;
+    }
+    const contextStart = Math.max(0, match.index - 1600);
+    const contextEnd = Math.min(htmlText.length, match.index + match[0].length + 5200);
+    const context = htmlText.slice(contextStart, contextEnd);
+    const forwardContext = htmlText.slice(match.index, contextEnd);
+    const title = extractResearchJsonTitleNear_(context);
+    if (!title || !matchesResearchKeyword_(title, keyword)) {
+      continue;
+    }
+    seen.add(url);
+    items.push({
+      site: site.key,
+      siteLabel: site.label,
+      title,
+      url,
+      price: priceNear_(forwardContext) || priceNear_(context),
+      shipping: shippingNear_(forwardContext).amount,
+      shippingKnown: shippingNear_(forwardContext).known,
+      condition: conditionNear_(forwardContext, site.key),
+      contextText: stripResearchHtml_(context),
+    });
+  }
+  return items;
+}
+
+function extractStructuredCandidateItems_(html, site, keyword, seen) {
+  const items = [];
+  const htmlText = normalizeResearchEscapedText_(html);
+  const objectPattern = /\{[^{}]{0,3000}\}/g;
+  let match;
+  while ((match = objectPattern.exec(htmlText)) !== null && items.length < 40) {
+    const objectText = match[0];
+    const title = extractResearchJsonTitleNear_(objectText);
+    if (!title || !matchesResearchKeyword_(title, keyword)) {
+      continue;
+    }
+    const url = extractResearchStructuredUrl_(objectText, site.key);
+    if (!url || seen.has(url) || !site.resultHost.test(url)) {
+      continue;
+    }
+    seen.add(url);
+    items.push({
+      site: site.key,
+      siteLabel: site.label,
+      title,
+      url,
+      price: priceNear_(objectText),
+      shipping: shippingNear_(objectText).amount,
+      shippingKnown: shippingNear_(objectText).known,
+      condition: conditionNear_(objectText, site.key),
+      contextText: stripResearchHtml_(objectText),
+    });
+  }
+  return items;
+}
+
+function extractUrlOnlyCandidateItems_(html, site, keyword, seen) {
+  const items = [];
+  const htmlText = normalizeResearchEscapedText_(html);
+  const urlPattern = /https?:\/\/[^"'\s<>\\]+/gi;
+  let match;
+  while ((match = urlPattern.exec(htmlText)) !== null && items.length < 30) {
+    const url = normalizeResearchProductUrl_(match[0], site.key);
+    if (!url || seen.has(url) || !site.resultHost.test(url)) {
+      continue;
+    }
+    const contextStart = Math.max(0, match.index - 2400);
+    const contextEnd = Math.min(htmlText.length, match.index + match[0].length + 6200);
+    const context = htmlText.slice(contextStart, contextEnd);
+    const title = extractResearchCandidateTitleFromContext_(context, keyword);
+    const contextText = stripResearchHtml_(context);
+    if (!title && site.key !== 'Rakuten') {
+      continue;
+    }
+    const matchesContext = title
+      ? matchesResearchKeyword_(title, keyword)
+      : matchesResearchKeyword_(contextText, keyword);
+    if (!matchesContext && site.key !== 'Rakuten' && !shouldProbeUrlOnlyResearchCandidate_(site, contextText, keyword)) {
+      continue;
+    }
+    seen.add(url);
+    const forwardContext = htmlText.slice(match.index, contextEnd);
+    const shipping = shippingNear_(forwardContext);
+    const mustFetchDetail = !title || !matchesContext;
+    items.push({
+      site: site.key,
+      siteLabel: site.label,
+      title: title || keyword,
+      url,
+      price: mustFetchDetail ? 0 : (priceNear_(forwardContext) || priceNear_(context)),
+      shipping: mustFetchDetail ? 0 : shipping.amount,
+      shippingKnown: !mustFetchDetail && shipping.known,
+      condition: mustFetchDetail ? '' : conditionNear_(forwardContext, site.key),
+      contextText: mustFetchDetail ? '' : contextText,
+      detailPriority: matchesContext ? 2 : 1,
+    });
+  }
+  return items;
+}
+
+function extractResearchCandidateTitleFromContext_(context, keyword) {
+  const jsonTitle = extractResearchJsonTitleNear_(context);
+  if (jsonTitle) {
+    return jsonTitle;
+  }
+  const value = normalizeResearchEscapedText_(context);
+  const patterns = [
+    /<h[1-3]\b[^>]*>([\s\S]{2,500}?)<\/h[1-3]>/i,
+    /<img\b[^>]*(?:alt|title)=["']([^"']{2,260})["'][^>]*>/i,
+    /"(?:alt|imageAlt|itemCaption|catchcopy)"\s*:\s*"([^"]{2,260})"/i,
+  ];
+  for (let index = 0; index < patterns.length; index += 1) {
+    const match = value.match(patterns[index]);
+    if (match && match[1]) {
+      return stripResearchHtml_(normalizeResearchEscapedText_(match[1])).trim();
+    }
+  }
+  return '';
+}
+
+function shouldProbeUrlOnlyResearchCandidate_(site, contextText, keyword) {
+  if (!site || site.key !== 'Rakuten') {
+    return false;
+  }
+  const normalizedContext = normalizeResearchText_(contextText);
+  const normalizedKeyword = normalizeResearchText_(keyword);
+  const tokens = normalizedKeyword.split(/\s+/).filter((token) => token.length >= 2);
+  if (!tokens.length) {
+    return false;
+  }
+  return tokens.some((token) => normalizedContext.indexOf(token) >= 0)
+    || /item\.rakuten\.co\.jp/i.test(String(contextText || ''));
+}
+
+function extractResearchStructuredUrl_(objectText, siteName) {
+  const value = normalizeResearchEscapedText_(objectText);
+  const urlMatch = value.match(/"(?:url|href|itemUrl|productUrl)"\s*:\s*"([^"]+)"/i);
+  if (urlMatch) {
+    const url = normalizeResearchProductUrl_(urlMatch[1], siteName);
+    if (url) {
+      return url;
+    }
+  }
+  if (siteName === 'Mercari') {
+    const idMatch = value.match(/"(?:id|itemId|productId)"\s*:\s*"(m[0-9A-Za-z_-]+)"/i);
+    if (idMatch) {
+      return `https://jp.mercari.com/item/${idMatch[1]}`;
+    }
+  }
+  if (siteName === 'YahooFleamarket') {
+    const idMatch = value.match(/"(?:id|itemId|productId)"\s*:\s*"(z[0-9A-Za-z_-]+)"/i);
+    if (idMatch) {
+      return `https://paypayfleamarket.yahoo.co.jp/item/${idMatch[1]}`;
+    }
+  }
+  return '';
+}
+
+function extractResearchJsonTitleNear_(context) {
+  const value = normalizeResearchEscapedText_(context);
+  const patterns = [
+    /"(?:name|title|itemName|productName)"\s*:\s*"([^"]{2,240})"/i,
+    /&quot;(?:name|title|itemName|productName)&quot;\s*:\s*&quot;([^&]{2,240})&quot;/i,
+  ];
+  for (let index = 0; index < patterns.length; index += 1) {
+    const match = value.match(patterns[index]);
+    if (match && match[1]) {
+      return normalizeResearchEscapedText_(match[1]).trim();
+    }
+  }
+  return '';
+}
+
+function extractResearchDetailTitle_(html) {
+  const value = normalizeResearchEscapedText_(html);
+  const patterns = [
+    /<meta\b[^>]*(?:property|name)=["']og:title["'][^>]*content=["']([^"']{2,300})["'][^>]*>/i,
+    /<meta\b[^>]*content=["']([^"']{2,300})["'][^>]*(?:property|name)=["']og:title["'][^>]*>/i,
+    /"(?:name|title|itemName|productName)"\s*:\s*"([^"]{2,300})"/i,
+    /<h1\b[^>]*>([\s\S]{2,500}?)<\/h1>/i,
+    /<title\b[^>]*>([\s\S]{2,500}?)<\/title>/i,
+  ];
+  for (let index = 0; index < patterns.length; index += 1) {
+    const match = value.match(patterns[index]);
+    if (match && match[1]) {
+      return stripResearchHtml_(normalizeResearchEscapedText_(match[1])).trim();
+    }
+  }
+  return stripResearchHtml_(value).slice(0, 300).trim();
+}
+
+function normalizeResearchEscapedText_(value) {
+  return decodeResearchHtml_(String(value || '')
+    .replace(/\\u002F/g, '/')
+    .replace(/\\\//g, '/')
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))));
 }
 
 function extractResearchAnchorAttributeTitle_(anchorHtml) {
@@ -2652,6 +3170,15 @@ function isCompleteDvdCandidate_(text, expectedVolume) {
     return true;
   }
   const half = toHalfWidthNumber_(String(text || ''));
+  const zen = String.fromCharCode(0x5168);
+  const kan = String.fromCharCode(0x5DFB);
+  const set = String.fromCharCode(0x30BB, 0x30C3, 0x30C8);
+  if (new RegExp(`${zen}\\s*${expectedVolume}\\s*${kan}|${expectedVolume}\\s*${kan}\\s*${set}|${zen}${kan}`).test(half)) {
+    return true;
+  }
+  if (new RegExp(`\\u5168\\s*${expectedVolume}\\s*\\u5DFB|${expectedVolume}\\s*\\u5DFB\\s*\\u30BB\\u30C3\\u30C8|\\u5168\\u5DFB`).test(half)) {
+    return true;
+  }
   return new RegExp(`\u5168\\s*${expectedVolume}\\s*\u5DFB|${expectedVolume}\\s*\u5DFB\\s*\u30BB\u30C3\u30C8|\u5168\u5DFB`).test(half);
 }
 
@@ -2661,6 +3188,17 @@ function isRejectedDvdPaperGoods_(text) {
 
 function expectedVolumeCount_(text) {
   const half = toHalfWidthNumber_(String(text || ''));
+  const zen = String.fromCharCode(0x5168);
+  const kan = String.fromCharCode(0x5DFB);
+  const set = String.fromCharCode(0x30BB, 0x30C3, 0x30C8);
+  const plainJapaneseMatch = half.match(new RegExp(`${zen}\\s*([0-9]+)\\s*${kan}|([0-9]+)\\s*${kan}\\s*${set}`));
+  if (plainJapaneseMatch) {
+    return Number(plainJapaneseMatch[1] || plainJapaneseMatch[2]) || 0;
+  }
+  const japaneseMatch = half.match(/\u5168\s*([0-9]+)\s*\u5DFB|([0-9]+)\s*\u5DFB\s*\u30BB\u30C3\u30C8/);
+  if (japaneseMatch) {
+    return Number(japaneseMatch[1] || japaneseMatch[2]) || 0;
+  }
   const match = half.match(/\u5168\s*([0-9]+)\s*\u5DFB|([0-9]+)\s*\u5DFB\s*\u30BB\u30C3\u30C8/);
   return Number((match && (match[1] || match[2])) || 0);
 }
@@ -2670,7 +3208,69 @@ function buildAmazonAsinResearchLines_(rowData) {
   if (!asin) {
     return [];
   }
-  return [`ASIN\u78BA\u8A8DURL ${asin}\nhttps://www.amazon.co.jp/dp/${asin}`];
+  const url = `https://www.amazon.co.jp/dp/${asin}`;
+  const availability = inspectResearchUrlAvailability_(url);
+  if (availability.availability !== 'available') {
+    return [];
+  }
+  return [`ASIN\u78BA\u8A8DURL ${asin}\n${url}`];
+}
+
+function inspectResearchUrlAvailability_(url) {
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+      },
+    });
+    const status = response.getResponseCode();
+    if (status === 404 || status === 410) {
+      return { availability: 'unavailable', status, reason: `HTTP ${status}` };
+    }
+    if (status < 200 || status >= 400) {
+      return { availability: 'unknown', status, reason: `HTTP ${status}` };
+    }
+    const html = String(response.getContentText() || '');
+    const text = stripResearchHtml_(html);
+    if (UNAVAILABLE_PATTERN.test(text)) {
+      return { availability: 'unavailable', status, reason: '\u8CA9\u58F2\u7D42\u4E86\u8868\u793A' };
+    }
+    return { availability: 'available', status, html };
+  } catch (error) {
+    return { availability: 'unknown', reason: String(error) };
+  }
+}
+
+function inspectResearchUrlsAvailability_(urls) {
+  const targets = (urls || []).filter(Boolean);
+  if (!targets.length) return [];
+  if (!UrlFetchApp.fetchAll) return targets.map(inspectResearchUrlAvailability_);
+  try {
+    const responses = UrlFetchApp.fetchAll(targets.map((url) => ({
+      url,
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+      },
+    })));
+    return responses.map((response) => {
+      const status = response.getResponseCode();
+      if (status === 404 || status === 410) return { availability: 'unavailable', status, reason: `HTTP ${status}` };
+      if (status < 200 || status >= 400) return { availability: 'unknown', status, reason: `HTTP ${status}` };
+      const html = String(response.getContentText() || '');
+      const text = stripResearchHtml_(html);
+      return UNAVAILABLE_PATTERN.test(text)
+        ? { availability: 'unavailable', status, reason: '\u8CA9\u58F2\u7D42\u4E86\u8868\u793A' }
+        : { availability: 'available', status, html };
+    });
+  } catch (error) {
+    return targets.map(() => ({ availability: 'unknown', reason: String(error) }));
+  }
 }
 
 function extractAmazonAsinFromResearchRow_(rowData) {
@@ -2733,6 +3333,53 @@ function splitResearchResultBlocks_(text) {
     blockStart = blockEnd;
     return block;
   }).filter(Boolean);
+}
+
+function removeUnavailableResearchResultsFromRow_(spreadsheet, sheet, rowNumber, columns, rowData) {
+  const summary = { inspected: 0, removed: 0, unknown: 0, removals: [] };
+  if (!sheet || !rowNumber || !columns) {
+    return summary;
+  }
+
+  RESEARCH_RESULT_KEYS.map((key) => columns[key]).filter(Boolean).forEach((columnNumber) => {
+    const cell = sheet.getRange(rowNumber, columnNumber);
+    const current = String(cell.getValue() || '');
+    if (!current || isResearchDeadlineReached_(rowData)) {
+      return;
+    }
+
+    const kept = [];
+    splitResearchResultBlocks_(current).forEach((block) => {
+      const url = canonicalResearchUrl_((String(block).match(/https?:\/\/\S+/) || [''])[0]);
+      if (!url || isResearchDeadlineReached_(rowData)) {
+        kept.push(block);
+        return;
+      }
+      summary.inspected += 1;
+      const inspected = inspectResearchUrlAvailability_(url);
+      if (inspected.availability === 'unavailable') {
+        summary.removed += 1;
+        summary.removals.push({ row: rowNumber, column: columnNumber, url, reason: inspected.reason || '' });
+        writeSynchronizationCheck_(
+          spreadsheet,
+          '\u58F2\u308A\u5207\u308C\u5019\u88DC\u524A\u9664',
+          rowData && rowData.orderNumber ? rowData.orderNumber : '',
+          `${url} \u3092\u524A\u9664\u3057\u307E\u3057\u305F\uFF08${inspected.reason || '\u8CA9\u58F2\u7D42\u4E86'}\uFF09`,
+        );
+        return;
+      }
+      if (inspected.availability === 'unknown') {
+        summary.unknown += 1;
+      }
+      kept.push(block);
+    });
+
+    const next = kept.join('\n');
+    if (next !== current) {
+      cell.setValue(next).setWrap(true);
+    }
+  });
+  return summary;
 }
 
 function appendUrlToMainSheet_(rowNumber, columnNumber, resultLines) {
@@ -2833,6 +3480,7 @@ function shortenResearchTitle_(title) {
 
 function normalizeResearchProductUrl_(rawUrl, siteName) {
   let url = decodeResearchHtml_(String(rawUrl || '')).trim();
+  url = url.replace(/\\u002F/g, '/').replace(/\\\//g, '/');
   if (!url || /^javascript:|^#/.test(url) || SEARCH_RESULT_NOISE_PATTERN.test(url)) {
     return '';
   }
@@ -2843,6 +3491,7 @@ function normalizeResearchProductUrl_(rawUrl, siteName) {
     const hosts = {
       Amazon: 'https://www.amazon.co.jp',
       Yahoo: 'https://page.auctions.yahoo.co.jp',
+      YahooFleamarket: 'https://paypayfleamarket.yahoo.co.jp',
       Mercari: 'https://jp.mercari.com',
       Jimoty: 'https://jmty.jp',
       Rakuten: 'https://item.rakuten.co.jp',
@@ -2860,6 +3509,9 @@ function normalizeResearchProductUrl_(rawUrl, siteName) {
   }
   if (siteName === 'Yahoo' && (match = url.match(/auctions\.yahoo\.co\.jp\/jp\/auction\/([A-Za-z0-9]+)/i))) {
     return `https://page.auctions.yahoo.co.jp/jp/auction/${match[1]}`;
+  }
+  if ((siteName === 'Yahoo' || siteName === 'YahooFleamarket') && (match = url.match(/paypayfleamarket\.yahoo\.co\.jp\/item\/([A-Za-z0-9_-]+)/i))) {
+    return `https://paypayfleamarket.yahoo.co.jp/item/${match[1]}`;
   }
   if (siteName === 'Mercari' && (match = url.match(/jp\.mercari\.com\/item\/([A-Za-z0-9_-]+)/i))) {
     return `https://jp.mercari.com/item/${match[1]}`;
@@ -2886,7 +3538,7 @@ function normalizeResearchProductUrl_(rawUrl, siteName) {
 }
 
 function canonicalResearchUrl_(url) {
-  const siteNames = ['Amazon', 'Yahoo', 'Mercari', 'Jimoty', 'Rakuten', 'Surugaya', 'Offmall', 'SecondStreet', 'NetOff'];
+  const siteNames = ['Amazon', 'Yahoo', 'YahooFleamarket', 'Mercari', 'Jimoty', 'Rakuten', 'Surugaya', 'Offmall', 'SecondStreet', 'NetOff'];
   for (let index = 0; index < siteNames.length; index += 1) {
     const normalized = normalizeResearchProductUrl_(url, siteNames[index]);
     if (normalized) {
@@ -2920,11 +3572,218 @@ function priceNear_(html) {
       return Number(String(match[1]).replace(/,/g, '')) || 0;
     }
   }
+  const yenMatch = text.match(/([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*\u5186/);
+  if (yenMatch) {
+    return Number(String(yenMatch[1]).replace(/,/g, '')) || 0;
+  }
   return 0;
+}
+
+function dryRunUnavailableResearchCleanup() {
+  return cleanupUnavailableResearchResults_(getTargetSpreadsheet_(), false, true);
+}
+
+function applyUnavailableResearchCleanup() {
+  return cleanupUnavailableResearchResults_(getTargetSpreadsheet_(), true, true);
+}
+
+function startDryRunUnavailableResearchCleanupAuto() {
+  resetUnavailableResearchCleanupTrigger_('continueDryRunUnavailableResearchCleanupAuto');
+  ScriptApp.newTrigger('continueDryRunUnavailableResearchCleanupAuto').timeBased().everyMinutes(1).create();
+  return continueDryRunUnavailableResearchCleanupAuto();
+}
+
+function continueDryRunUnavailableResearchCleanupAuto() {
+  return continueUnavailableResearchCleanupAuto_('continueDryRunUnavailableResearchCleanupAuto', false);
+}
+
+function startApplyUnavailableResearchCleanupAuto() {
+  resetUnavailableResearchCleanupTrigger_('continueApplyUnavailableResearchCleanupAuto');
+  ScriptApp.newTrigger('continueApplyUnavailableResearchCleanupAuto').timeBased().everyMinutes(1).create();
+  return continueApplyUnavailableResearchCleanupAuto();
+}
+
+function continueApplyUnavailableResearchCleanupAuto() {
+  return continueUnavailableResearchCleanupAuto_('continueApplyUnavailableResearchCleanupAuto', true);
+}
+
+function continueUnavailableResearchCleanupAuto_(handlerName, applyChanges) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) {
+    return { applyChanges: !!applyChanges, skipped: true, reason: 'another cleanup run is active' };
+  }
+  try {
+    const result = cleanupUnavailableResearchResults_(getTargetSpreadsheet_(), !!applyChanges, true);
+    if (result.completed) resetUnavailableResearchCleanupTrigger_(handlerName);
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function resetUnavailableResearchCleanupTrigger_(handlerName) {
+  ScriptApp.getProjectTriggers().forEach((trigger) => {
+    if (trigger.getHandlerFunction() === handlerName) ScriptApp.deleteTrigger(trigger);
+  });
+}
+
+function cleanupUnavailableResearchResults_(spreadsheet, applyChanges, useSavedCursor) {
+  if (useSavedCursor) {
+    return cleanupUnavailableResearchBatch_(spreadsheet, applyChanges);
+  }
+  const sheet = spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return { applyChanges: !!applyChanges, inspected: 0, removed: 0, unknown: 0, removals: [] };
+  }
+  const columns = researchColumnMap_(sheet);
+  const resultColumns = RESEARCH_RESULT_KEYS.map((key) => columns[key]).filter(Boolean);
+  const propertyKey = `UNAVAILABLE_RESEARCH_CLEANUP_CURSOR_${applyChanges ? 'APPLY' : 'DRY_RUN'}`;
+  const properties = useSavedCursor ? PropertiesService.getScriptProperties() : null;
+  const savedCursor = properties ? JSON.parse(properties.getProperty(propertyKey) || '{}') : {};
+  const startedAt = Date.now();
+  const deadlineMs = startedAt + (4 * 60 * 1000);
+  const maxCellsPerRun = 6;
+  let processedCells = 0;
+  let startRow = Math.max(2, Number(savedCursor.row) || 2);
+  let startColumnIndex = Math.max(0, Number(savedCursor.columnIndex) || 0);
+  const summary = { applyChanges: !!applyChanges, inspected: 0, removed: 0, unknown: 0, removals: [], completed: false, nextRow: startRow, nextColumnIndex: startColumnIndex };
+  for (let row = startRow; row <= sheet.getLastRow(); row += 1) {
+    let rowUnknown = false;
+    const firstColumnIndex = row === startRow ? startColumnIndex : 0;
+    for (let columnIndex = firstColumnIndex; columnIndex < resultColumns.length; columnIndex += 1) {
+      if (processedCells >= maxCellsPerRun || Date.now() >= deadlineMs) {
+        if (properties) properties.setProperty(propertyKey, JSON.stringify({ row, columnIndex }));
+        summary.nextRow = row;
+        summary.nextColumnIndex = columnIndex;
+        Logger.log(JSON.stringify(summary));
+        return summary;
+      }
+      const column = resultColumns[columnIndex];
+      const cell = sheet.getRange(row, column);
+      const current = String(cell.getValue() || '');
+      processedCells += 1;
+      if (!current) continue;
+      const kept = [];
+      splitResearchResultBlocks_(current).forEach((block) => {
+        const url = canonicalResearchUrl_((String(block).match(/https?:\/\/\S+/) || [''])[0]);
+        if (!url) {
+          kept.push(block);
+          return;
+        }
+        summary.inspected += 1;
+        const inspected = inspectResearchUrlAvailability_(url);
+        if (inspected.availability === 'unavailable') {
+          summary.removed += 1;
+          summary.removals.push({ row, column, url, reason: inspected.reason || '' });
+          if (applyChanges) {
+            writeSynchronizationCheck_(spreadsheet, '\u58F2\u308A\u5207\u308C\u5019\u88DC\u524A\u9664', orderNumberFromRow_(sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0], columns), `${url} \u3092\u524A\u9664\u3057\u307E\u3057\u305F\uFF08${inspected.reason || '\u8CA9\u58F2\u7D42\u4E86'}\uFF09\u3002`);
+          }
+          return;
+        }
+        if (inspected.availability === 'unknown') {
+          summary.unknown += 1;
+          rowUnknown = true;
+        }
+        kept.push(block);
+      });
+      if (applyChanges && kept.join('\n') !== current) {
+        cell.setValue(kept.join('\n')).setWrap(true);
+      }
+    }
+    if (applyChanges) {
+      const hasCandidates = rowHasResearchCandidates_(sheet, row, columns);
+      setManagedResearchStatusAtColumn_(sheet, row, columns.status, rowUnknown ? RESEARCH_STATUS.review : (hasCandidates ? RESEARCH_STATUS.found : RESEARCH_STATUS.empty));
+      if (rowUnknown && columns.memo) {
+        appendUniqueMemo_(sheet, row, columns.memo, '\u5019\u88DCURL\u306E\u53D6\u5F97\u5931\u6557\u304C\u3042\u308B\u305F\u3081\u3001\u524A\u9664\u305B\u305A\u624B\u52D5\u78BA\u8A8D\u5BFE\u8C61\u3068\u3057\u3066\u4FDD\u6301\u3057\u307E\u3057\u305F\u3002');
+      }
+    }
+  }
+  if (properties) properties.deleteProperty(propertyKey);
+  summary.completed = true;
+  summary.nextRow = null;
+  summary.nextColumnIndex = null;
+  Logger.log(JSON.stringify(summary));
+  return summary;
+}
+
+function cleanupUnavailableResearchBatch_(spreadsheet, applyChanges) {
+  const sheet = spreadsheet.getSheetByName(RESEARCH_AUTOMATION_CONFIG.sheetName);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return { applyChanges: !!applyChanges, inspected: 0, removed: 0, unknown: 0, removals: [], completed: true };
+  }
+  const columns = researchColumnMap_(sheet);
+  const resultColumns = RESEARCH_RESULT_KEYS.map((key) => columns[key]).filter(Boolean);
+  const references = [];
+  for (let row = 2; row <= sheet.getLastRow(); row += 1) {
+    resultColumns.forEach((column) => {
+      const current = String(sheet.getRange(row, column).getValue() || '');
+      splitResearchResultBlocks_(current).forEach((block, blockIndex) => {
+        const url = canonicalResearchUrl_((String(block).match(/https?:\/\/\S+/) || [''])[0]);
+        if (url) references.push({ row, column, blockIndex, url, current });
+      });
+    });
+  }
+  const propertyKey = `UNAVAILABLE_RESEARCH_CLEANUP_REVERSE_CURSOR_${applyChanges ? 'APPLY' : 'DRY_RUN'}`;
+  const properties = PropertiesService.getScriptProperties();
+  const savedCursorValue = properties.getProperty(propertyKey);
+  const endIndex = savedCursorValue !== null
+    ? Math.min(Math.max(0, Number(savedCursorValue) || 0), references.length)
+    : references.length;
+  const startIndex = Math.max(0, endIndex - 100);
+  const selected = references.slice(startIndex, endIndex);
+  const summary = { applyChanges: !!applyChanges, inspected: 0, removed: 0, unknown: 0, removals: [], completed: startIndex === 0, remaining: startIndex };
+  const removalsByCell = {};
+  const affectedRows = {};
+  // Advance before external requests so one permanently slow URL cannot stall every later batch.
+  // A timed-out batch is treated conservatively as unknown and its sheet values remain unchanged.
+  properties.setProperty(propertyKey, String(startIndex));
+  const inspections = inspectResearchUrlsAvailability_(selected.map((reference) => reference.url));
+  selected.forEach((reference, selectedIndex) => {
+    summary.inspected += 1;
+    const inspected = inspections[selectedIndex] || { availability: 'unknown', reason: '\u78BA\u8A8D\u7D50\u679C\u306A\u3057' };
+    if (inspected.availability === 'unavailable') {
+      summary.removed += 1;
+      summary.removals.push({ row: reference.row, column: reference.column, url: reference.url, reason: inspected.reason || '' });
+      if (applyChanges) {
+        const key = `${reference.row}:${reference.column}`;
+        if (!removalsByCell[key]) removalsByCell[key] = { reference, blockIndexes: {} };
+        removalsByCell[key].blockIndexes[reference.blockIndex] = true;
+        affectedRows[reference.row] = true;
+        writeSynchronizationCheck_(spreadsheet, '\u58F2\u308A\u5207\u308C\u5019\u88DC\u524A\u9664', orderNumberFromRow_(sheet.getRange(reference.row, 1, 1, sheet.getLastColumn()).getValues()[0], columns), `${reference.url} \u3092\u524A\u9664\u3057\u307E\u3057\u305F\uFF08${inspected.reason || '\u8CA9\u58F2\u7D42\u4E86'}\uFF09\u3002`);
+      }
+    } else if (inspected.availability === 'unknown') {
+      summary.unknown += 1;
+      if (applyChanges) affectedRows[reference.row] = true;
+    }
+  });
+  Object.keys(removalsByCell).forEach((key) => {
+    const entry = removalsByCell[key];
+    const cell = sheet.getRange(entry.reference.row, entry.reference.column);
+    const blocks = splitResearchResultBlocks_(String(cell.getValue() || ''));
+    cell.setValue(blocks.filter((block, index) => !entry.blockIndexes[index]).join('\n')).setWrap(true);
+  });
+  if (applyChanges) {
+    Object.keys(affectedRows).forEach((rowKey) => {
+      const row = Number(rowKey);
+      const hasCandidates = rowHasResearchCandidates_(sheet, row, columns);
+      setManagedResearchStatusAtColumn_(sheet, row, columns.status, hasCandidates ? RESEARCH_STATUS.found : RESEARCH_STATUS.empty);
+    });
+  }
+  if (summary.completed) properties.deleteProperty(propertyKey);
+  else properties.setProperty(propertyKey, String(startIndex));
+  Logger.log(JSON.stringify(summary));
+  return summary;
 }
 
 function shippingNear_(html) {
   const text = stripResearchHtml_(html);
+  if (/\u9001\u6599\u7121\u6599|\u9001\u6599\s*(?:\u306F)?\s*0\s*\u5186/.test(text)) {
+    return { known: true, amount: 0 };
+  }
+  const japaneseMatch = text.match(/(?:\u9001\u6599|\u914D\u9001\u6599)[^\d]{0,15}([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,6})\s*\u5186/);
+  if (japaneseMatch) {
+    return { known: true, amount: Number(japaneseMatch[1].replace(/,/g, '')) || 0 };
+  }
   if (/\u9001\u6599\u7121\u6599|\u9001\u6599\s*(?:\u306F)?\s*0\s*\u5186|\u914D\u9001\u6599\u7121\u6599/.test(text)) {
     return { known: true, amount: 0 };
   }
@@ -2954,15 +3813,136 @@ function isUnknownResearchCondition_(condition) {
   return /\u72B6\u614B\u8981\u78BA\u8A8D/.test(String(condition || ''));
 }
 
+function isCompatibleResearchProductCandidate_(item, rowData, keyword) {
+  const productName = String((rowData && rowData.productName) || '').trim();
+  if (!productName || !item) {
+    return true;
+  }
+  const titleText = `${item.title || ''} ${item.contextText || ''}`;
+  if (!matchesResearchKeyword_(titleText, keyword)) {
+    return false;
+  }
+  if (isResearchAccessoryCandidateForMainProduct_(item, rowData)) {
+    return false;
+  }
+  if (isCompatibleDvdResearchTitleCandidate_(titleText, rowData)) {
+    return true;
+  }
+
+  const normalizedTitle = normalizeResearchText_(titleText);
+  const normalizedProductName = normalizeResearchText_(productName);
+  const productModelTokens = normalizedProductName.match(/[a-z]{1,8}[a-z0-9-]*[0-9][a-z0-9-]*/g) || [];
+  const strongModelTokens = productModelTokens.filter((token) => token.length >= 5);
+  if (strongModelTokens.some((token) => normalizedTitle.indexOf(token) >= 0)) {
+    return true;
+  }
+
+  const keywordModelTokens = normalizeResearchText_(keyword).match(/[a-z]{1,8}[a-z0-9-]*[0-9][a-z0-9-]*/g) || [];
+  const onlyShortKeywordModelMatched = keywordModelTokens.length > 0
+    && keywordModelTokens.every((token) => token.length <= 4)
+    && keywordModelTokens.some((token) => normalizedTitle.indexOf(token) >= 0);
+  const productTerms = significantResearchProductTerms_(productName);
+  const matchedTerms = productTerms.filter((term) => normalizedTitle.indexOf(term) >= 0);
+
+  if (onlyShortKeywordModelMatched) {
+    return matchedTerms.length >= 1;
+  }
+  if (productTerms.length >= 3) {
+    return matchedTerms.length >= 2;
+  }
+  return matchedTerms.length >= Math.max(1, Math.ceil(productTerms.length / 2));
+}
+
+function isResearchAccessoryCandidateForMainProduct_(item, rowData) {
+  const productName = String((rowData && rowData.productName) || '');
+  const title = String((item && item.title) || '');
+  if (!title || isResearchAccessoryLikeTitle_(productName)) {
+    return false;
+  }
+  return isResearchAccessoryLikeTitle_(title);
+}
+
+function isCompatibleDvdResearchTitleCandidate_(titleText, rowData) {
+  if (!rowData || !rowData.isDvd) {
+    return false;
+  }
+  const productTitle = broadDvdResearchTitle_(rowData.productName);
+  const candidateTitle = broadDvdResearchTitle_(titleText);
+  if (!productTitle || !candidateTitle) {
+    return false;
+  }
+  return normalizeResearchText_(candidateTitle).indexOf(normalizeResearchText_(productTitle)) >= 0
+    || normalizeResearchText_(productTitle).indexOf(normalizeResearchText_(candidateTitle)) >= 0;
+}
+
+function isResearchAccessoryLikeTitle_(value) {
+  const text = toHalfWidthNumber_(String(value || '')).replace(/\s+/g, ' ').trim();
+  const accessoryTerms = '(?:\u6C34\u30BF\u30F3\u30AF|\u30BF\u30F3\u30AF|\u30AB\u30D0\u30FC|\u30D5\u30A3\u30EB\u30BF\u30FC|\u30EA\u30E2\u30B3\u30F3|\u30A2\u30C0\u30D7\u30BF\u30FC|\u30B3\u30FC\u30C9|\u30B1\u30FC\u30D6\u30EB|\u30DB\u30FC\u30B9|\u30CE\u30BA\u30EB|\u30B1\u30FC\u30B9|\u30AD\u30E3\u30C3\u30D7|\u3075\u305F|\u84CB|\u90E8\u54C1|\u30D1\u30FC\u30C4|\u66FF\u3048|\u4EA4\u63DB\u54C1|\u6D88\u8017\u54C1)';
+  return new RegExp(`(?:\u7528|\u5C02\u7528|\u5BFE\u5FDC|\u4EA4\u63DB\u7528).{0,24}${accessoryTerms}|${accessoryTerms}.{0,16}(?:\u7528|\u5C02\u7528|\u5BFE\u5FDC|\u4EA4\u63DB|\u90E8\u54C1|\u30D1\u30FC\u30C4|\u7D14\u6B63)`, 'i').test(text);
+}
+
+function significantResearchProductTerms_(value) {
+  const normalized = normalizeResearchText_(value);
+  const tokens = normalized
+    .split(/\s+/)
+    .filter((token) => token.length >= 3)
+    .filter((token) => !/^(the|and|with|for|set|style|type|dvd|led|new|used)$/.test(token))
+    .filter((token) => !/^[0-9]+$/.test(token))
+    .filter((token) => !/^[a-z]?[0-9]+$/.test(token))
+    .filter((token) => !/^[a-z]{1,2}$/.test(token));
+  const seen = new Set();
+  return tokens.filter((token) => {
+    if (seen.has(token)) {
+      return false;
+    }
+    seen.add(token);
+    return true;
+  });
+}
+
 function matchesResearchKeyword_(title, keyword) {
   const normalizedTitle = normalizeResearchText_(title);
   const normalizedKeyword = normalizeResearchText_(keyword);
+  if (matchesPlainJapaneseResearchKeyword_(title, keyword)) {
+    return true;
+  }
   const modelTokens = normalizedKeyword.match(/[a-z]{1,8}[a-z0-9-]*[0-9][a-z0-9-]*/g) || [];
   if (modelTokens.length) {
     return modelTokens.some((token) => normalizedTitle.indexOf(token) >= 0);
   }
   const tokens = normalizedKeyword.split(/\s+/).filter((token) => token.length >= 2 && !/^(\u5168|\u5168\u5DFB|\u30EC\u30F3\u30BF\u30EB)$/.test(token));
   return tokens.length ? tokens.filter((token) => normalizedTitle.indexOf(token) >= 0).length >= Math.ceil(tokens.length / 2) : false;
+}
+
+function matchesPlainJapaneseResearchKeyword_(title, keyword) {
+  if (String(keyword || '').match(/[A-Za-z]{1,8}[A-Za-z0-9-]*[0-9][A-Za-z0-9-]*/)) {
+    return false;
+  }
+  const normalizedTitle = toHalfWidthNumber_(String(title || '')).toLowerCase();
+  const normalizedKeyword = toHalfWidthNumber_(String(keyword || '')).toLowerCase();
+  if (!/[\u3040-\u30ff\u3400-\u9fff]/.test(normalizedTitle + normalizedKeyword)) {
+    return false;
+  }
+  const tokens = normalizedKeyword
+    .replace(/[^\u3040-\u30ff\u3400-\u9fffA-Za-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length >= 2 && !/^(\u5168|\u5168\u5DFB|\u5DFB|\u30BB\u30C3\u30C8|\u30EC\u30F3\u30BF\u30EB|\u843D\u3061|dvd|\u4E2D\u53E4)$/.test(token));
+  return tokens.length ? tokens.filter((token) => normalizedTitle.indexOf(token) >= 0).length >= Math.ceil(tokens.length / 2) : false;
+}
+
+function broadDvdResearchTitle_(value) {
+  return toHalfWidthNumber_(String(value || ''))
+    .replace(/[\u3010\u3011]/g, ' ')
+    .replace(/\[[^\]]*(?:\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u7528|\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1|DVD|Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|\u4E2D\u53E4|\u30BB\u30C3\u30C8\u5546\u54C1)[^\]]*\]/gi, ' ')
+    .replace(/[\uFF08(][^)\uFF09]*(?:\u5168\s*[0-9]+\s*(?:\u679A|\u5DFB)|\u5168\u5DFB|DVD|Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u7528)[^)\uFF09]*[)\uFF09]/gi, ' ')
+    .replace(/[0-9]+\s*[\u301C\uFF5E~\u30FC\uFF0D-]\s*[0-9]+/g, ' ')
+    .replace(/\u5168\s*[0-9]+\s*(?:\u679A|\u5DFB)\s*\u30BB\u30C3\u30C8?/g, ' ')
+    .replace(/\u5168\u5DFB\u30BB\u30C3\u30C8|\u5168\u5DFB|\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u7528|\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1/gi, ' ')
+    .replace(/Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|DVD|\u4E2D\u53E4|\u30BB\u30C3\u30C8\u5546\u54C1/gi, ' ')
+    .replace(/[\uFF08(][^)\uFF09]*[)\uFF09]/g, ' ')
+    .split(/\s*\+\s*/)[0]
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function normalizeResearchText_(value) {

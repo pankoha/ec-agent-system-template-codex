@@ -8,11 +8,11 @@ function extractUrls_(text) {
 
 function parseResearchLineForComparison_(line) {
   const text = String(line || '');
-  const priceParts = text.match(/([0-9\uFF10-\uFF19,\uFF0C]+)\s*\u5186/g) || [];
+  const priceParts = text.match(/([0-9０-９,，]+)\s*円/g) || [];
   const prices = priceParts
     .map((part) => Number(toHalfWidthNumber_(part).replace(/[^\d]/g, '')))
     .filter((price) => price > 0);
-  const shippingKnown = /\u9001\u6599\u8981\u78BA\u8A8D/.test(text) ? false : prices.length > 1 || /\u9001\u6599\u7121\u6599/.test(text);
+  const shippingKnown = /送料要確認/.test(text) ? false : prices.length > 1 || /送料無料/.test(text);
   const price = prices.length
     ? prices[0] + (shippingKnown && prices.length > 1 ? prices[1] : 0)
     : 0;
@@ -25,25 +25,25 @@ function parseResearchLineForComparison_(line) {
 
 function researchConditionRank_(text) {
   const value = String(text || '');
-  if (/\u307B\u307C\u65B0\u54C1|\u672A\u4F7F\u7528\u306B\u8FD1\u3044/i.test(value)) {
+  if (/ほぼ新品|未使用に近い/i.test(value)) {
     return 90;
   }
-  if (/\u65B0\u54C1|\u672A\u4F7F\u7528\u54C1|\u672A\u4F7F\u7528|brand\s*new|new\b/i.test(value)) {
+  if (/新品|未使用品|未使用|brand\s*new|new\b/i.test(value)) {
     return 100;
   }
-  if (/\u975E\u5E38\u306B\u826F\u3044|\u76EE\u7ACB\u3063\u305F\u50B7\u3084\u6C5A\u308C\u306A\u3057/i.test(value)) {
+  if (/非常に良い|目立った傷や汚れなし/i.test(value)) {
     return 80;
   }
-  if (/\u826F\u3044|\u3084\u3084\u50B7\u3084\u6C5A\u308C\u3042\u308A/i.test(value)) {
+  if (/良い|やや傷や汚れあり/i.test(value)) {
     return 60;
   }
-  if (/\u53EF|\u50B7\u3084\u6C5A\u308C\u3042\u308A/i.test(value)) {
+  if (/可|傷や汚れあり/i.test(value)) {
     return 40;
   }
-  if (/\u4E2D\u53E4|\u4F7F\u7528\u6E08|used/i.test(value)) {
+  if (/中古|使用済|used/i.test(value)) {
     return 30;
   }
-  if (/\u72B6\u614B\u8981\u78BA\u8A8D|\u9001\u6599\u8981\u78BA\u8A8D/.test(value)) {
+  if (/状態要確認|送料要確認/.test(value)) {
     return 20;
   }
   return 0;
@@ -62,11 +62,11 @@ function isBetterResearchCandidate_(candidate, existingResults) {
 }
 
 function formatResearchResult_(item, includeSiteName) {
-  const title = shortenResearchTitle_(item.title || item.siteLabel || item.site || '\u5019\u88DC');
-  const price = `${Number(item.price).toLocaleString('ja-JP')}\u5186`;
+  const title = shortenResearchTitle_(item.title || item.siteLabel || item.site || '候補');
+  const price = `${Number(item.price).toLocaleString('ja-JP')}円`;
   const shipping = item.shippingKnown
-    ? (item.shipping ? `+${Number(item.shipping).toLocaleString('ja-JP')}\u5186` : '+\u9001\u6599\u7121\u6599')
-    : ' \u9001\u6599\u8981\u78BA\u8A8D';
+    ? (item.shipping ? `+${Number(item.shipping).toLocaleString('ja-JP')}円` : '+送料無料')
+    : ' 送料要確認';
   const condition = item.condition ? ` ${item.condition}` : '';
   const prefix = includeSiteName ? `${item.siteLabel || item.site} ` : '';
   return `${prefix}${title}  ${price}${shipping}${condition}\n${item.url}`;
@@ -75,7 +75,7 @@ function formatResearchResult_(item, includeSiteName) {
 function shortenResearchTitle_(title) {
   return String(title || '')
     .replace(/\s+/g, ' ')
-    .replace(/\s*[|\uFF5C].*$/, '')
+    .replace(/\s*[|｜].*$/, '')
     .trim()
     .slice(0, 42);
 }
@@ -164,9 +164,9 @@ function priceNear_(html) {
     }
   }
   const textPatterns = [
-    /(?:\u8CA9\u58F2\u4FA1\u683C|\u5546\u54C1\u4FA1\u683C|\u73FE\u5728\u4FA1\u683C|\u5373\u6C7A\u4FA1\u683C|\u4FA1\u683C)\s*[:\uFF1A]?\s*[\uFFE5\u00A5]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*\u5186?/i,
-    /[\uFFE5\u00A5]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})(?:\s*\u5186)?/i,
-    /([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*\u5186/i,
+    /(?:販売価格|商品価格|現在価格|即決価格|価格)\s*[:：]?\s*[￥¥]?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*円?/i,
+    /[￥¥]\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})(?:\s*円)?/i,
+    /([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,7})\s*円/i,
   ];
   for (let index = 0; index < textPatterns.length; index += 1) {
     const match = text.match(textPatterns[index]);
@@ -278,7 +278,7 @@ function cleanupUnavailableResearchResults_(spreadsheet, applyChanges, useSavedC
           summary.removed += 1;
           summary.removals.push({ row, column, url, reason: inspected.reason || '' });
           if (applyChanges) {
-            writeSynchronizationCheck_(spreadsheet, '\u58F2\u308A\u5207\u308C\u5019\u88DC\u524A\u9664', orderNumberFromRow_(sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0], columns), `${url} \u3092\u524A\u9664\u3057\u307E\u3057\u305F\uFF08${inspected.reason || '\u8CA9\u58F2\u7D42\u4E86'}\uFF09\u3002`);
+            writeSynchronizationCheck_(spreadsheet, '売り切れ候補削除', orderNumberFromRow_(sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0], columns), `${url} を削除しました（${inspected.reason || '販売終了'}）。`);
           }
           return;
         }
@@ -296,7 +296,7 @@ function cleanupUnavailableResearchResults_(spreadsheet, applyChanges, useSavedC
       const hasCandidates = rowHasResearchCandidates_(sheet, row, columns);
       setManagedResearchStatusAtColumn_(sheet, row, columns.status, rowUnknown ? RESEARCH_STATUS.review : (hasCandidates ? RESEARCH_STATUS.found : RESEARCH_STATUS.empty));
       if (rowUnknown && columns.memo) {
-        appendUniqueMemo_(sheet, row, columns.memo, '\u5019\u88DCURL\u306E\u53D6\u5F97\u5931\u6557\u304C\u3042\u308B\u305F\u3081\u3001\u524A\u9664\u305B\u305A\u624B\u52D5\u78BA\u8A8D\u5BFE\u8C61\u3068\u3057\u3066\u4FDD\u6301\u3057\u307E\u3057\u305F\u3002');
+        appendUniqueMemo_(sheet, row, columns.memo, '候補URLの取得失敗があるため、削除せず手動確認対象として保持しました。');
       }
     }
   }
@@ -342,7 +342,7 @@ function cleanupUnavailableResearchBatch_(spreadsheet, applyChanges) {
   const inspections = inspectResearchUrlsAvailability_(selected.map((reference) => reference.url));
   selected.forEach((reference, selectedIndex) => {
     summary.inspected += 1;
-    const inspected = inspections[selectedIndex] || { availability: 'unknown', reason: '\u78BA\u8A8D\u7D50\u679C\u306A\u3057' };
+    const inspected = inspections[selectedIndex] || { availability: 'unknown', reason: '確認結果なし' };
     if (inspected.availability === 'unavailable') {
       summary.removed += 1;
       summary.removals.push({ row: reference.row, column: reference.column, url: reference.url, reason: inspected.reason || '' });
@@ -351,7 +351,7 @@ function cleanupUnavailableResearchBatch_(spreadsheet, applyChanges) {
         if (!removalsByCell[key]) removalsByCell[key] = { reference, blockIndexes: {} };
         removalsByCell[key].blockIndexes[reference.blockIndex] = true;
         affectedRows[reference.row] = true;
-        writeSynchronizationCheck_(spreadsheet, '\u58F2\u308A\u5207\u308C\u5019\u88DC\u524A\u9664', orderNumberFromRow_(sheet.getRange(reference.row, 1, 1, sheet.getLastColumn()).getValues()[0], columns), `${reference.url} \u3092\u524A\u9664\u3057\u307E\u3057\u305F\uFF08${inspected.reason || '\u8CA9\u58F2\u7D42\u4E86'}\uFF09\u3002`);
+        writeSynchronizationCheck_(spreadsheet, '売り切れ候補削除', orderNumberFromRow_(sheet.getRange(reference.row, 1, 1, sheet.getLastColumn()).getValues()[0], columns), `${reference.url} を削除しました（${inspected.reason || '販売終了'}）。`);
       }
     } else if (inspected.availability === 'unknown') {
       summary.unknown += 1;
@@ -386,10 +386,10 @@ function shippingNear_(html) {
   if (japaneseMatch) {
     return { known: true, amount: Number(japaneseMatch[1].replace(/,/g, '')) || 0 };
   }
-  if (/\u9001\u6599\u7121\u6599|\u9001\u6599\s*(?:\u306F)?\s*0\s*\u5186|\u914D\u9001\u6599\u7121\u6599/.test(text)) {
+  if (/送料無料|送料\s*(?:は)?\s*0\s*円|配送料無料/.test(text)) {
     return { known: true, amount: 0 };
   }
-  const match = text.match(/(?:\u9001\u6599|\u914D\u9001\u6599)[^\d]{0,15}([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,6})\s*\u5186/);
+  const match = text.match(/(?:送料|配送料)[^\d]{0,15}([0-9]{1,3}(?:,[0-9]{3})+|[0-9]{2,6})\s*円/);
   return match
     ? { known: true, amount: Number(match[1].replace(/,/g, '')) || 0 }
     : { known: false, amount: 0 };
@@ -398,9 +398,9 @@ function shippingNear_(html) {
 function conditionNear_(html, siteName) {
   const text = stripResearchHtml_(html);
   const patterns = [
-    /\u4E2D\u53E4\u54C1?\s*[-\uFF0D]?\s*(?:\u307B\u307C\u65B0\u54C1|\u975E\u5E38\u306B\u826F\u3044|\u826F\u3044|\u53EF)/,
-    /\u672A\u4F7F\u7528\u306B\u8FD1\u3044|\u76EE\u7ACB\u3063\u305F\u50B7\u3084\u6C5A\u308C\u306A\u3057|\u3084\u3084\u50B7\u3084\u6C5A\u308C\u3042\u308A|\u50B7\u3084\u6C5A\u308C\u3042\u308A/,
-    /\u65B0\u54C1\u672A\u4F7F\u7528|\u65B0\u54C1|\u672A\u958B\u5C01|\u4E2D\u53E4[ABC]?|\u72B6\u614B\u8981\u78BA\u8A8D/,
+    /中古品?\s*[-－]?\s*(?:ほぼ新品|非常に良い|良い|可)/,
+    /未使用に近い|目立った傷や汚れなし|やや傷や汚れあり|傷や汚れあり/,
+    /新品未使用|新品|未開封|中古[ABC]?|状態要確認/,
   ];
   for (let index = 0; index < patterns.length; index += 1) {
     const match = text.match(patterns[index]);
@@ -408,11 +408,11 @@ function conditionNear_(html, siteName) {
       return match[0];
     }
   }
-  return siteName === 'Rakuten' ? '' : '\u72B6\u614B\u8981\u78BA\u8A8D';
+  return siteName === 'Rakuten' ? '' : '状態要確認';
 }
 
 function isUnknownResearchCondition_(condition) {
-  return /\u72B6\u614B\u8981\u78BA\u8A8D/.test(String(condition || ''));
+  return /状態要確認/.test(String(condition || ''));
 }
 
 function isCompatibleResearchProductCandidate_(item, rowData, keyword) {
@@ -479,8 +479,8 @@ function isCompatibleDvdResearchTitleCandidate_(titleText, rowData) {
 
 function isResearchAccessoryLikeTitle_(value) {
   const text = toHalfWidthNumber_(String(value || '')).replace(/\s+/g, ' ').trim();
-  const accessoryTerms = '(?:\u6C34\u30BF\u30F3\u30AF|\u30BF\u30F3\u30AF|\u30AB\u30D0\u30FC|\u30D5\u30A3\u30EB\u30BF\u30FC|\u30EA\u30E2\u30B3\u30F3|\u30A2\u30C0\u30D7\u30BF\u30FC|\u30B3\u30FC\u30C9|\u30B1\u30FC\u30D6\u30EB|\u30DB\u30FC\u30B9|\u30CE\u30BA\u30EB|\u30B1\u30FC\u30B9|\u30AD\u30E3\u30C3\u30D7|\u3075\u305F|\u84CB|\u90E8\u54C1|\u30D1\u30FC\u30C4|\u66FF\u3048|\u4EA4\u63DB\u54C1|\u6D88\u8017\u54C1)';
-  return new RegExp(`(?:\u7528|\u5C02\u7528|\u5BFE\u5FDC|\u4EA4\u63DB\u7528).{0,24}${accessoryTerms}|${accessoryTerms}.{0,16}(?:\u7528|\u5C02\u7528|\u5BFE\u5FDC|\u4EA4\u63DB|\u90E8\u54C1|\u30D1\u30FC\u30C4|\u7D14\u6B63)`, 'i').test(text);
+  const accessoryTerms = '(?:水タンク|タンク|カバー|フィルター|リモコン|アダプター|コード|ケーブル|ホース|ノズル|ケース|キャップ|ふた|蓋|部品|パーツ|替え|交換品|消耗品)';
+  return new RegExp(`(?:用|専用|対応|交換用).{0,24}${accessoryTerms}|${accessoryTerms}.{0,16}(?:用|専用|対応|交換|部品|パーツ|純正)`, 'i').test(text);
 }
 
 function significantResearchProductTerms_(value) {
@@ -512,7 +512,7 @@ function matchesResearchKeyword_(title, keyword) {
   if (modelTokens.length) {
     return modelTokens.some((token) => normalizedTitle.indexOf(token) >= 0);
   }
-  const tokens = normalizedKeyword.split(/\s+/).filter((token) => token.length >= 2 && !/^(\u5168|\u5168\u5DFB|\u30EC\u30F3\u30BF\u30EB)$/.test(token));
+  const tokens = normalizedKeyword.split(/\s+/).filter((token) => token.length >= 2 && !/^(全|全巻|レンタル)$/.test(token));
   return tokens.length ? tokens.filter((token) => normalizedTitle.indexOf(token) >= 0).length >= Math.ceil(tokens.length / 2) : false;
 }
 
@@ -528,20 +528,20 @@ function matchesPlainJapaneseResearchKeyword_(title, keyword) {
   const tokens = normalizedKeyword
     .replace(/[^\u3040-\u30ff\u3400-\u9fffA-Za-z0-9]+/g, ' ')
     .split(/\s+/)
-    .filter((token) => token.length >= 2 && !/^(\u5168|\u5168\u5DFB|\u5DFB|\u30BB\u30C3\u30C8|\u30EC\u30F3\u30BF\u30EB|\u843D\u3061|dvd|\u4E2D\u53E4)$/.test(token));
+    .filter((token) => token.length >= 2 && !/^(全|全巻|巻|セット|レンタル|落ち|dvd|中古)$/.test(token));
   return tokens.length ? tokens.filter((token) => normalizedTitle.indexOf(token) >= 0).length >= Math.ceil(tokens.length / 2) : false;
 }
 
 function broadDvdResearchTitle_(value) {
   return toHalfWidthNumber_(String(value || ''))
-    .replace(/[\u3010\u3011]/g, ' ')
-    .replace(/\[[^\]]*(?:\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u7528|\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1|DVD|Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|\u4E2D\u53E4|\u30BB\u30C3\u30C8\u5546\u54C1)[^\]]*\]/gi, ' ')
-    .replace(/[\uFF08(][^)\uFF09]*(?:\u5168\s*[0-9]+\s*(?:\u679A|\u5DFB)|\u5168\u5DFB|DVD|Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u7528)[^)\uFF09]*[)\uFF09]/gi, ' ')
-    .replace(/[0-9]+\s*[\u301C\uFF5E~\u30FC\uFF0D-]\s*[0-9]+/g, ' ')
-    .replace(/\u5168\s*[0-9]+\s*(?:\u679A|\u5DFB)\s*\u30BB\u30C3\u30C8?/g, ' ')
-    .replace(/\u5168\u5DFB\u30BB\u30C3\u30C8|\u5168\u5DFB|\u30EC\u30F3\u30BF\u30EB\u843D\u3061|\u30EC\u30F3\u30BF\u30EB\u7528|\u30DE\u30FC\u30B1\u30C3\u30C8\u30D7\u30EC\u30A4\u30B9DVD\u30BB\u30C3\u30C8\u5546\u54C1/gi, ' ')
-    .replace(/Blu-ray|\u30D6\u30EB\u30FC\u30EC\u30A4|DVD|\u4E2D\u53E4|\u30BB\u30C3\u30C8\u5546\u54C1/gi, ' ')
-    .replace(/[\uFF08(][^)\uFF09]*[)\uFF09]/g, ' ')
+    .replace(/[【】]/g, ' ')
+    .replace(/\[[^\]]*(?:レンタル落ち|レンタル用|マーケットプレイスDVDセット商品|DVD|Blu-ray|ブルーレイ|中古|セット商品)[^\]]*\]/gi, ' ')
+    .replace(/[（(][^)）]*(?:全\s*[0-9]+\s*(?:枚|巻)|全巻|DVD|Blu-ray|ブルーレイ|レンタル落ち|レンタル用)[^)）]*[)）]/gi, ' ')
+    .replace(/[0-9]+\s*[〜～~ー－-]\s*[0-9]+/g, ' ')
+    .replace(/全\s*[0-9]+\s*(?:枚|巻)\s*セット?/g, ' ')
+    .replace(/全巻セット|全巻|レンタル落ち|レンタル用|マーケットプレイスDVDセット商品/gi, ' ')
+    .replace(/Blu-ray|ブルーレイ|DVD|中古|セット商品/gi, ' ')
+    .replace(/[（(][^)）]*[)）]/g, ' ')
     .split(/\s*\+\s*/)[0]
     .replace(/\s+/g, ' ')
     .trim();
@@ -550,8 +550,8 @@ function broadDvdResearchTitle_(value) {
 function normalizeResearchText_(value) {
   return toHalfWidthNumber_(String(value || ''))
     .toLowerCase()
-    .replace(/[\uFF21-\uFF3A\uFF41-\uFF5A]/g, (character) => String.fromCharCode(character.charCodeAt(0) - 0xfee0))
-    .replace(/[^a-z0-9\u4E00-\u9FA0\u3041-\u3093\u30A1-\u30F6\u30FC-]+/g, ' ')
+    .replace(/[Ａ-Ｚａ-ｚ]/g, (character) => String.fromCharCode(character.charCodeAt(0) - 0xfee0))
+    .replace(/[^a-z0-9一-龠ぁ-んァ-ヶー-]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -591,6 +591,6 @@ function writeResearchCheck_(rowData, type, message, manualUrl) {
     productName,
     rowData.keywordLines.join('\n'),
     manualUrl || '',
-    rowData.newOnly ? 'SKU\u306Bmuza\u3092\u542B\u3080\u305F\u3081\u65B0\u54C1\u9650\u5B9A' : '',
+    rowData.newOnly ? 'SKUにmuzaを含むため新品限定' : '',
   ]);
 }
