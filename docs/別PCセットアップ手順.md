@@ -238,6 +238,39 @@ syncResearchManagementSheet
 researchAllVisibleManagementRowsNow
 ```
 
+## 16. Codexブラウザリサーチスキルを使う
+
+このリポジトリを別PCへ clone したあと、Codex からメルカリのブラウザリサーチや見逃し補正を再利用できます。
+
+参照ファイル:
+
+```text
+docs/mercari-browser-research-automation.md
+.agents/skills/research-management-browser-automation/SKILL.md
+.agents/skills/research-management-browser-automation/references/missed-candidate-repair.md
+```
+
+メルカリの通常リサーチを実行する例:
+
+```text
+@.agents/skills/research-management-browser-automation/SKILL.md に従って、
+スプレッドシートの「リサーチ管理表」に対してMercariブラウザリサーチを実行してください。
+```
+
+見逃し補正を実行する例:
+
+```text
+@.agents/skills/research-management-browser-automation/SKILL.md に従って、
+注文番号 503-6197941-2663006 のMercari候補見逃しを再検証し、
+検証済みURLだけをシートへ反映してください。
+```
+
+補足:
+
+- メルカリは Apps Script の HTTP 取得ではなく、Codex の in-app browser で描画後 DOM を取得して確認します。
+- Mercari の候補は `H` 列、Rakuten の候補は `J` 列に書き込みます。
+- `L` 列は商品ページまで正常検証できたときだけ更新し、未完了なら `M` 列へ失敗段階を残します。
+
 各関数の役割:
 
 ```text

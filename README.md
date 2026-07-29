@@ -399,3 +399,30 @@ Claude Code版リポジトリ: `<YOUR_ORG_OR_USER>/ec-agent-system-template`
 ## 更新履歴
 
 [CHANGELOG.md](./CHANGELOG.md)
+
+---
+
+## Browser research skill
+
+This repository also includes a Codex skill for browser-based research-management operations.
+
+Files:
+
+```text
+.agents/skills/research-management-browser-automation/SKILL.md
+.agents/skills/research-management-browser-automation/references/missed-candidate-repair.md
+docs/mercari-browser-research-automation.md
+```
+
+Use it when you want Codex to:
+
+- run Mercari browser research against `リサーチ管理表`
+- investigate why a Mercari or Rakuten candidate was missed
+- safely reflect a verified candidate back into the live sheet
+
+Example prompt:
+
+```text
+@.agents/skills/research-management-browser-automation/SKILL.md に従って、
+リサーチ管理表のMercariブラウザリサーチを実行してください。
+```

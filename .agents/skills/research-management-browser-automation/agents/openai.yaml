@@ -1,0 +1,4 @@
+interface:
+  display_name: "Research管理ブラウザ運用"
+  short_description: "リサーチ管理表のMercariブラウザリサーチとMercari/Rakuten見逃し補正を行うCodexスキル"
+  default_prompt: "リサーチ管理表に対して、browser-based Mercari research または見逃し候補の再検証と反映を実行してください。"
