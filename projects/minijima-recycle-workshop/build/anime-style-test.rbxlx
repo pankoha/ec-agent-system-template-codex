@@ -1,0 +1,1917 @@
+<roblox version="4">
+  <Item class="ReplicatedStorage" referent="0">
+    <Properties>
+      <string name="Name">ReplicatedStorage</string>
+    </Properties>
+    <Item class="Folder" referent="1">
+      <Properties>
+        <string name="Name">Shared</string>
+      </Properties>
+      <Item class="ModuleScript" referent="2">
+        <Properties>
+          <string name="Name">Config</string>
+          <string name="Source"><![CDATA[--!strict
+
+local Config = {
+	DATASTORE_NAME = "MinijimaRecycleWorkshop_v1",
+	MAX_MATERIALS = 99,
+	DECORATION_SLOTS = 3,
+	COLLECT_DISTANCE = 12,
+	COLLECT_COOLDOWN = 2.5,
+	CRAFT_COOLDOWN = 0.5,
+	AUTOSAVE_SECONDS = 60,
+	MATERIAL_ORDER = { "Wood", "Plastic", "Metal" },
+	MATERIALS = {
+		Wood = { displayName = "木のかけら", color = Color3.fromRGB(210, 126, 54) },
+		Plastic = { displayName = "プラスチック", color = Color3.fromRGB(42, 202, 255) },
+		Metal = { displayName = "金属", color = Color3.fromRGB(178, 188, 230) },
+	},
+}
+
+return table.freeze(Config)
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="3">
+        <Properties>
+          <string name="Name">Missions</string>
+          <string name="Source"><![CDATA[--!strict
+
+local missions = {
+	{
+		id = "FirstCraft",
+		title = "はじめての工作",
+		description = "木1ことプラスチック1こで、ボトルプランターを作ろう",
+		collect = { Wood = 1, Plastic = 1, Metal = 0 },
+		craftRecipeId = "BottlePlanter",
+		cleanlinessReward = 15,
+	},
+	{
+		id = "BeachCleanup",
+		title = "海岸のおそうじ",
+		description = "木1こと金属2こを集めて、かんかんスツールを作ろう",
+		collect = { Wood = 1, Plastic = 0, Metal = 2 },
+		craftRecipeId = "CanStool",
+		cleanlinessReward = 15,
+	},
+	{
+		id = "LightThePath",
+		title = "島にあかりを",
+		description = "プラスチック1こと金属2こで、つぎはぎランプを作ろう",
+		collect = { Wood = 0, Plastic = 1, Metal = 2 },
+		craftRecipeId = "PatchworkLamp",
+		cleanlinessReward = 15,
+	},
+	{
+		id = "RestoreTheForest",
+		title = "森を元気にする",
+		description = "木3こと金属1こで、リサイクルベンチを作ろう",
+		collect = { Wood = 3, Plastic = 0, Metal = 1 },
+		craftRecipeId = "RecycledBench",
+		cleanlinessReward = 20,
+	},
+	{
+		id = "BuildEcoBot",
+		title = "エコロボを完成させる",
+		description = "3種類の素材を集めて、エコロボを作ろう",
+		collect = { Wood = 1, Plastic = 2, Metal = 2 },
+		craftRecipeId = "EcoBot",
+		cleanlinessReward = 20,
+	},
+	{
+		id = "RecycleFestival",
+		title = "リサイクル祭り",
+		description = "好きな作品を合計8こ作って、お祭りを開こう",
+		collect = { Wood = 0, Plastic = 0, Metal = 0 },
+		craftTarget = 8,
+		cleanlinessReward = 15,
+	},
+}
+
+return table.freeze({
+	order = table.freeze(missions),
+})
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="4">
+        <Properties>
+          <string name="Name">Recipes</string>
+          <string name="Source"><![CDATA[--!strict
+
+local recipes = {
+	BottlePlanter = {
+		id = "BottlePlanter",
+		displayName = "ボトルプランター",
+		cost = { Wood = 1, Plastic = 1, Metal = 0 },
+		color = Color3.fromRGB(86, 190, 115),
+	},
+	CanStool = {
+		id = "CanStool",
+		displayName = "かんかんスツール",
+		cost = { Wood = 1, Plastic = 0, Metal = 2 },
+		color = Color3.fromRGB(247, 174, 63),
+	},
+	PatchworkLamp = {
+		id = "PatchworkLamp",
+		displayName = "つぎはぎランプ",
+		cost = { Wood = 0, Plastic = 1, Metal = 2 },
+		color = Color3.fromRGB(255, 224, 92),
+	},
+	RecycledBench = {
+		id = "RecycledBench",
+		displayName = "リサイクルベンチ",
+		cost = { Wood = 3, Plastic = 0, Metal = 1 },
+		color = Color3.fromRGB(126, 89, 59),
+	},
+	EcoBot = {
+		id = "EcoBot",
+		displayName = "エコロボ",
+		cost = { Wood = 1, Plastic = 2, Metal = 2 },
+		color = Color3.fromRGB(113, 220, 190),
+	},
+}
+
+local order = { "BottlePlanter", "CanStool", "PatchworkLamp", "RecycledBench", "EcoBot" }
+
+return table.freeze({
+	byId = table.freeze(recipes),
+	order = table.freeze(order),
+})
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="ServerScriptService" referent="5">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Folder" referent="6">
+      <Properties>
+        <string name="Name">Server</string>
+      </Properties>
+      <Item class="ModuleScript" referent="7">
+        <Properties>
+          <string name="Name">DataService</string>
+          <string name="Source"><![CDATA[--!strict
+
+local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Recipes = require(ReplicatedStorage.Shared.Recipes)
+
+export type PlayerData = {
+	schemaVersion: number,
+	materials: { [string]: number },
+	unlockedRecipes: { [string]: boolean },
+	decorations: { string },
+	tutorialComplete: boolean,
+	missionStage: number,
+	missionCollected: { [string]: number },
+	cleanliness: number,
+	craftedCount: number,
+}
+
+-- An unpublished local place cannot create a DataStore handle. Keep the MVP
+-- playable in Studio and switch to session-only data until the place is
+-- published and API access is enabled.
+local store: any = nil
+local storeAvailable, storeResult = pcall(function()
+	return DataStoreService:GetDataStore(Config.DATASTORE_NAME)
+end)
+if storeAvailable then
+	store = storeResult
+else
+	warn(`[Minijima] DataStore unavailable; using session-only data: {storeResult}`)
+end
+local sessions: { [Player]: PlayerData } = {}
+local dirty: { [Player]: boolean } = {}
+local persistenceEnabled: { [Player]: boolean } = {}
+local revisions: { [Player]: number } = {}
+
+local DataService = {}
+
+local function defaultData(): PlayerData
+	return {
+		schemaVersion = 2,
+		materials = { Wood = 0, Plastic = 0, Metal = 0 },
+		unlockedRecipes = { BottlePlanter = true },
+		decorations = { "", "", "" },
+		tutorialComplete = false,
+		missionStage = 1,
+		missionCollected = { Wood = 0, Plastic = 0, Metal = 0 },
+		cleanliness = 0,
+		craftedCount = 0,
+	}
+end
+
+local function sanitize(raw: any): PlayerData
+	local clean = defaultData()
+	if type(raw) ~= "table" then
+		return clean
+	end
+
+	if type(raw.materials) == "table" then
+		for _, materialId in Config.MATERIAL_ORDER do
+			local value = raw.materials[materialId]
+			if type(value) == "number" and value == value then
+				clean.materials[materialId] = math.clamp(math.floor(value), 0, Config.MAX_MATERIALS)
+			end
+		end
+	end
+
+	if type(raw.unlockedRecipes) == "table" then
+		for recipeId, unlocked in raw.unlockedRecipes do
+			if type(recipeId) == "string" and Recipes.byId[recipeId] ~= nil and unlocked == true then
+				clean.unlockedRecipes[recipeId] = true
+			end
+		end
+	end
+
+	if type(raw.decorations) == "table" then
+		for slot = 1, Config.DECORATION_SLOTS do
+			local recipeId = raw.decorations[slot]
+			if type(recipeId) == "string" and Recipes.byId[recipeId] ~= nil then
+				clean.decorations[slot] = recipeId
+			end
+		end
+	end
+
+	clean.tutorialComplete = raw.tutorialComplete == true
+	if type(raw.missionStage) == "number" then
+		clean.missionStage = math.clamp(math.floor(raw.missionStage), 1, 7)
+	end
+	if type(raw.missionCollected) == "table" then
+		for _, materialId in Config.MATERIAL_ORDER do
+			local value = raw.missionCollected[materialId]
+			if type(value) == "number" and value == value then
+				clean.missionCollected[materialId] = math.clamp(math.floor(value), 0, 999)
+			end
+		end
+	end
+	if type(raw.cleanliness) == "number" then
+		clean.cleanliness = math.clamp(math.floor(raw.cleanliness), 0, 100)
+	end
+	if type(raw.craftedCount) == "number" then
+		clean.craftedCount = math.clamp(math.floor(raw.craftedCount), 0, 9999)
+	end
+	return clean
+end
+
+function DataService.load(player: Player): PlayerData
+	local key = `player_{player.UserId}`
+	local success = false
+	local result: any = "DataStore is unavailable for this local place"
+	if store ~= nil then
+		success, result = pcall(function()
+			return store:GetAsync(key)
+		end)
+	end
+
+	local data = if success then sanitize(result) else defaultData()
+	if not success then
+		warn(`[Minijima] Save load failed for {player.UserId}; using session data: {result}`)
+	end
+	sessions[player] = data
+	dirty[player] = false
+	persistenceEnabled[player] = success
+	revisions[player] = 0
+	return data
+end
+
+function DataService.get(player: Player): PlayerData?
+	return sessions[player]
+end
+
+function DataService.markDirty(player: Player)
+	dirty[player] = true
+	revisions[player] = (revisions[player] or 0) + 1
+end
+
+function DataService.save(player: Player): boolean
+	local data = sessions[player]
+	-- Never overwrite cloud data after a failed load. The current play session
+	-- remains usable, but is intentionally session-only.
+	if persistenceEnabled[player] ~= true then
+		return true
+	end
+	if data == nil or dirty[player] ~= true then
+		return true
+	end
+
+	local key = `player_{player.UserId}`
+	local savingRevision = revisions[player] or 0
+	local payload = {
+		schemaVersion = data.schemaVersion,
+		materials = table.clone(data.materials),
+		unlockedRecipes = table.clone(data.unlockedRecipes),
+		decorations = table.clone(data.decorations),
+		tutorialComplete = data.tutorialComplete,
+		missionStage = data.missionStage,
+		missionCollected = table.clone(data.missionCollected),
+		cleanliness = data.cleanliness,
+		craftedCount = data.craftedCount,
+	}
+	local success = false
+	local message: any = "Unknown save error"
+	for attempt = 1, 3 do
+		success, message = pcall(function()
+			store:UpdateAsync(key, function()
+				return payload
+			end)
+		end)
+		if success then
+			break
+		end
+		if attempt < 3 then
+			task.wait(2 ^ (attempt - 1))
+		end
+	end
+	if success then
+		if revisions[player] == savingRevision then
+			dirty[player] = false
+		end
+	else
+		warn(`[Minijima] Save failed for {player.UserId}: {message}`)
+	end
+	return success
+end
+
+function DataService.release(player: Player)
+	DataService.save(player)
+	sessions[player] = nil
+	dirty[player] = nil
+	persistenceEnabled[player] = nil
+	revisions[player] = nil
+end
+
+function DataService.isPersistent(player: Player): boolean
+	return persistenceEnabled[player] == true
+end
+
+return DataService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Script" referent="8">
+        <Properties>
+          <string name="Name">GameServer</string>
+          <token name="RunContext">0</token>
+          <string name="Source"><![CDATA[--!strict
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Recipes = require(ReplicatedStorage.Shared.Recipes)
+local Missions = require(ReplicatedStorage.Shared.Missions)
+local DataService = require(script.Parent.DataService)
+local WorldBuilder = require(script.Parent.WorldBuilder)
+
+local world, workshop, decorationSlotLanes = WorldBuilder.build()
+
+local remotes = Instance.new("Folder")
+remotes.Name = "MinijimaRemotes"
+remotes.Parent = ReplicatedStorage
+
+local stateUpdated = Instance.new("RemoteEvent")
+stateUpdated.Name = "StateUpdated"
+stateUpdated.Parent = remotes
+
+local requestCraft = Instance.new("RemoteEvent")
+requestCraft.Name = "RequestCraft"
+requestCraft.Parent = remotes
+
+local tutorialComplete = Instance.new("RemoteEvent")
+tutorialComplete.Name = "TutorialComplete"
+tutorialComplete.Parent = remotes
+
+local notify = Instance.new("RemoteEvent")
+notify.Name = "Notify"
+notify.Parent = remotes
+
+local openWorkshop = Instance.new("RemoteEvent")
+openWorkshop.Name = "OpenWorkshop"
+openWorkshop.Parent = remotes
+
+local fetchState = Instance.new("RemoteFunction")
+fetchState.Name = "FetchState"
+fetchState.Parent = remotes
+
+local actionTimes: { [Player]: { [string]: number } } = {}
+local collectTimes: { [Player]: { [Instance]: number } } = {}
+local playerLanes: { [Player]: number } = {}
+
+local function reserveLane(player: Player): number
+	local used = {}
+	for _, lane in playerLanes do
+		used[lane] = true
+	end
+	for lane = 1, #decorationSlotLanes do
+		if not used[lane] then
+			playerLanes[player] = lane
+			return lane
+		end
+	end
+	playerLanes[player] = 1
+	return 1
+end
+
+local function slotsFor(player: Player): { BasePart }
+	local lane = playerLanes[player] or reserveLane(player)
+	return decorationSlotLanes[lane]
+end
+
+local function snapshot(player: Player)
+	local data = DataService.get(player)
+	if data == nil then
+		return
+	end
+	stateUpdated:FireClient(player, {
+		materials = table.clone(data.materials),
+		unlockedRecipes = table.clone(data.unlockedRecipes),
+		decorations = table.clone(data.decorations),
+		tutorialComplete = data.tutorialComplete,
+		missionStage = data.missionStage,
+		missionCollected = table.clone(data.missionCollected),
+		cleanliness = data.cleanliness,
+		craftedCount = data.craftedCount,
+		persistenceAvailable = DataService.isPersistent(player),
+	})
+end
+
+fetchState.OnServerInvoke = function(player)
+	local data = DataService.get(player)
+	if data == nil then
+		return nil
+	end
+	return {
+		materials = table.clone(data.materials),
+		unlockedRecipes = table.clone(data.unlockedRecipes),
+		decorations = table.clone(data.decorations),
+		tutorialComplete = data.tutorialComplete,
+		missionStage = data.missionStage,
+		missionCollected = table.clone(data.missionCollected),
+		cleanliness = data.cleanliness,
+		craftedCount = data.craftedCount,
+		persistenceAvailable = DataService.isPersistent(player),
+	}
+end
+
+local function allowAction(player: Player, action: string, cooldown: number): boolean
+	local now = os.clock()
+	local playerTimes = actionTimes[player]
+	if playerTimes == nil then
+		playerTimes = {}
+		actionTimes[player] = playerTimes
+	end
+	local previous = playerTimes[action] or 0
+	if now - previous < cooldown then
+		return false
+	end
+	playerTimes[action] = now
+	return true
+end
+
+local function playerNear(player: Player, target: BasePart, maximumDistance: number): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return root ~= nil and root:IsA("BasePart") and (root.Position - target.Position).Magnitude <= maximumDistance
+end
+
+local function canAfford(materials: { [string]: number }, cost: { [string]: number }): boolean
+	for _, materialId in Config.MATERIAL_ORDER do
+		if (materials[materialId] or 0) < (cost[materialId] or 0) then
+			return false
+		end
+	end
+	return true
+end
+
+local function nextRecipeId(recipeId: string): string?
+	for index, currentId in Recipes.order do
+		if currentId == recipeId then
+			return Recipes.order[index + 1]
+		end
+	end
+	return nil
+end
+
+local function currentMission(data: DataService.PlayerData): any
+	return Missions.order[data.missionStage]
+end
+
+local function resetMissionCollection(data: DataService.PlayerData)
+	for _, materialId in Config.MATERIAL_ORDER do
+		data.missionCollected[materialId] = 0
+	end
+end
+
+local function missionCollectionReady(data: DataService.PlayerData, mission: any): boolean
+	for _, materialId in Config.MATERIAL_ORDER do
+		if (data.missionCollected[materialId] or 0) < (mission.collect[materialId] or 0) then
+			return false
+		end
+	end
+	return true
+end
+
+local function completeMission(player: Player, data: DataService.PlayerData, mission: any)
+	data.cleanliness = math.clamp(data.cleanliness + mission.cleanlinessReward, 0, 100)
+	data.missionStage = math.min(data.missionStage + 1, #Missions.order + 1)
+	resetMissionCollection(data)
+	DataService.markDirty(player)
+	notify:FireClient(player, `ミッション達成！ 島のきれい度 {data.cleanliness}%`)
+end
+
+local function connectMaterialNode(node: Instance)
+	if not node:IsA("BasePart") then
+		return
+	end
+	local prompt = node:FindFirstChild("Collect")
+	if not prompt or not prompt:IsA("ProximityPrompt") then
+		return
+	end
+	local materialId = node:GetAttribute("MaterialId")
+	if type(materialId) ~= "string" or Config.MATERIALS[materialId] == nil then
+		return
+	end
+
+	prompt.Triggered:Connect(function(player)
+		local data = DataService.get(player)
+		if data == nil or not playerNear(player, node, Config.COLLECT_DISTANCE + 2) then
+			return
+		end
+		local nodeTimes = collectTimes[player]
+		if nodeTimes == nil then
+			nodeTimes = {}
+			collectTimes[player] = nodeTimes
+		end
+		local now = os.clock()
+		if now - (nodeTimes[node] or 0) < Config.COLLECT_COOLDOWN then
+			return
+		end
+		nodeTimes[node] = now
+
+		local current = data.materials[materialId] or 0
+		if current >= Config.MAX_MATERIALS then
+			notify:FireClient(player, "これ以上は持てないよ")
+			return
+		end
+		data.materials[materialId] = current + 1
+		local mission = currentMission(data)
+		if mission then
+			data.missionCollected[materialId] = (data.missionCollected[materialId] or 0) + 1
+		end
+		DataService.markDirty(player)
+		notify:FireClient(player, `{Config.MATERIALS[materialId].displayName} +1`)
+		snapshot(player)
+	end)
+end
+
+for _, node in world.MaterialNodes:GetChildren() do
+	connectMaterialNode(node)
+end
+
+local workshopPrompt = workshop:FindFirstChild("OpenWorkshop") :: ProximityPrompt
+workshopPrompt.Triggered:Connect(function(player)
+	if playerNear(player, workshop, 14) then
+		openWorkshop:FireClient(player)
+	end
+end)
+
+requestCraft.OnServerEvent:Connect(function(player, recipeId: any, slot: any)
+	if not allowAction(player, "craft", Config.CRAFT_COOLDOWN) then
+		return
+	end
+	if type(recipeId) ~= "string" or type(slot) ~= "number" or slot ~= math.floor(slot) then
+		return
+	end
+	if slot < 1 or slot > Config.DECORATION_SLOTS then
+		return
+	end
+	if not playerNear(player, workshop, 18) then
+		notify:FireClient(player, "工房の近くで作ってね")
+		return
+	end
+
+	local data = DataService.get(player)
+	local recipe = Recipes.byId[recipeId]
+	if data == nil or recipe == nil or data.unlockedRecipes[recipeId] ~= true then
+		return
+	end
+	if not canAfford(data.materials, recipe.cost) then
+		notify:FireClient(player, "材料が足りないよ")
+		return
+	end
+
+	for _, materialId in Config.MATERIAL_ORDER do
+		data.materials[materialId] -= recipe.cost[materialId] or 0
+	end
+	data.decorations[slot] = recipeId
+	data.craftedCount += 1
+	local unlockedId = nextRecipeId(recipeId)
+	local newlyUnlocked = unlockedId ~= nil and data.unlockedRecipes[unlockedId] ~= true
+	if unlockedId then
+		data.unlockedRecipes[unlockedId] = true
+	end
+	local mission = currentMission(data)
+	if mission and missionCollectionReady(data, mission) then
+		local matchesRecipe = mission.craftRecipeId == recipeId
+		local reachesCraftTarget = mission.craftTarget ~= nil and data.craftedCount >= mission.craftTarget
+		if matchesRecipe or reachesCraftTarget then
+			completeMission(player, data, mission)
+		end
+	end
+	DataService.markDirty(player)
+	WorldBuilder.renderDecorations(player, slotsFor(player), data.decorations)
+	notify:FireClient(player, `{recipe.displayName} 完成！`)
+	if newlyUnlocked and unlockedId then
+		notify:FireClient(player, `新しいレシピ「{Recipes.byId[unlockedId].displayName}」を発見！`)
+	end
+	snapshot(player)
+end)
+
+tutorialComplete.OnServerEvent:Connect(function(player)
+	if not allowAction(player, "tutorial", 1) then
+		return
+	end
+	local data = DataService.get(player)
+	if data and data.tutorialComplete ~= true then
+		data.tutorialComplete = true
+		DataService.markDirty(player)
+		snapshot(player)
+	end
+end)
+
+Players.PlayerAdded:Connect(function(player)
+	local data = DataService.load(player)
+	reserveLane(player)
+	WorldBuilder.renderDecorations(player, slotsFor(player), data.decorations)
+	task.defer(snapshot, player)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	local decorations = world:FindFirstChild(`Player_{player.UserId}_Decorations`)
+	if decorations then
+		decorations:Destroy()
+	end
+	DataService.release(player)
+	actionTimes[player] = nil
+	collectTimes[player] = nil
+	playerLanes[player] = nil
+end)
+
+task.spawn(function()
+	while true do
+		task.wait(Config.AUTOSAVE_SECONDS)
+		for _, player in Players:GetPlayers() do
+			if not DataService.save(player) then
+				notify:FireClient(player, "セーブを再試行しています")
+			end
+		end
+	end
+end)
+
+game:BindToClose(function()
+	for _, player in Players:GetPlayers() do
+		DataService.save(player)
+	end
+end)
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="9">
+        <Properties>
+          <string name="Name">WorldBuilder</string>
+          <string name="Source"><![CDATA[--!strict
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Recipes = require(ReplicatedStorage.Shared.Recipes)
+
+local WorldBuilder = {}
+
+local function animeOutline(target: Instance)
+	local value = Instance.new("Highlight")
+	value.Name = "AnimeOutline"
+	value.Adornee = target
+	value.FillTransparency = 1
+	value.OutlineColor = Color3.fromRGB(30, 52, 84)
+	value.OutlineTransparency = 0.08
+	value.DepthMode = Enum.HighlightDepthMode.Occluded
+	value.Parent = target
+end
+
+local function configureAnimeLighting()
+	Lighting.Brightness = 2.8
+	Lighting.Ambient = Color3.fromRGB(126, 145, 184)
+	Lighting.OutdoorAmbient = Color3.fromRGB(156, 174, 214)
+	Lighting.EnvironmentDiffuseScale = 0.65
+	Lighting.EnvironmentSpecularScale = 0.8
+	Lighting.ShadowSoftness = 0.18
+	Lighting.ClockTime = 14
+
+	for _, name in { "AnimeColor", "AnimeBloom", "AnimeSunRays", "AnimeAtmosphere" } do
+		local previous = Lighting:FindFirstChild(name)
+		if previous then
+			previous:Destroy()
+		end
+	end
+	local color = Instance.new("ColorCorrectionEffect")
+	color.Name = "AnimeColor"
+	color.Brightness = 0.04
+	color.Contrast = 0.13
+	color.Saturation = 0.24
+	color.TintColor = Color3.fromRGB(255, 250, 239)
+	color.Parent = Lighting
+	local bloom = Instance.new("BloomEffect")
+	bloom.Name = "AnimeBloom"
+	bloom.Intensity = 0.42
+	bloom.Size = 28
+	bloom.Threshold = 0.9
+	bloom.Parent = Lighting
+	local rays = Instance.new("SunRaysEffect")
+	rays.Name = "AnimeSunRays"
+	rays.Intensity = 0.075
+	rays.Spread = 0.82
+	rays.Parent = Lighting
+	local atmosphere = Instance.new("Atmosphere")
+	atmosphere.Name = "AnimeAtmosphere"
+	atmosphere.Color = Color3.fromRGB(194, 232, 255)
+	atmosphere.Decay = Color3.fromRGB(112, 153, 205)
+	atmosphere.Density = 0.2
+	atmosphere.Glare = 0.08
+	atmosphere.Haze = 1.1
+	atmosphere.Parent = Lighting
+end
+
+local function part(parent: Instance, name: string, size: Vector3, position: Vector3, color: Color3, material: Enum.Material?): Part
+	local value = Instance.new("Part")
+	value.Name = name
+	value.Size = size
+	value.Position = position
+	value.Color = color
+	value.Material = material or Enum.Material.SmoothPlastic
+	value.Anchored = true
+	value.TopSurface = Enum.SurfaceType.Smooth
+	value.BottomSurface = Enum.SurfaceType.Smooth
+	value.Parent = parent
+	return value
+end
+
+local function label(target: BasePart, text: string, maxDistance: number?)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Label"
+	gui.Size = UDim2.fromOffset(240, 52)
+	gui.StudsOffset = Vector3.new(0, target.Size.Y / 2 + 2, 0)
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = maxDistance or 30
+	gui.Parent = target
+
+	local box = Instance.new("TextLabel")
+	box.Size = UDim2.fromScale(1, 1)
+	box.BackgroundColor3 = Color3.fromRGB(22, 36, 44)
+	box.BackgroundTransparency = 0.12
+	box.TextColor3 = Color3.new(1, 1, 1)
+	box.Font = Enum.Font.GothamBold
+	box.TextSize = 20
+	box.Text = text
+	box.Parent = gui
+	Instance.new("UICorner", box).CornerRadius = UDim.new(0, 12)
+end
+
+local function materialDetail(parent: BasePart, name: string, size: Vector3, offset: Vector3, color: Color3, material: Enum.Material?): Part
+	local value = part(parent, name, size, parent.Position + offset, color, material)
+	value.CanCollide = false
+	return value
+end
+
+local function shapeMaterialNode(node: Part, materialId: string)
+	if materialId == "Wood" then
+		node.Name = node.Name .. "_Log"
+		node.Shape = Enum.PartType.Cylinder
+		node.Size = Vector3.new(4.2, 1.7, 1.7)
+		node.Material = Enum.Material.Wood
+		local endColor = Color3.fromRGB(205, 157, 98)
+		materialDetail(node, "CutEndLeft", Vector3.new(0.12, 1.72, 1.72), Vector3.new(-2.12, 0, 0), endColor, Enum.Material.Wood)
+		materialDetail(node, "CutEndRight", Vector3.new(0.12, 1.72, 1.72), Vector3.new(2.12, 0, 0), endColor, Enum.Material.Wood)
+	elseif materialId == "Plastic" then
+		node.Name = node.Name .. "_Bottle"
+		node.Shape = Enum.PartType.Cylinder
+		node.Size = Vector3.new(3.2, 1.8, 1.8)
+		node.Orientation = Vector3.new(0, 0, 90)
+		node.Material = Enum.Material.SmoothPlastic
+		local neck = materialDetail(node, "BottleNeck", Vector3.new(0.8, 1.05, 1.05), Vector3.new(0, 1.95, 0), node.Color)
+		neck.Shape = Enum.PartType.Cylinder
+		neck.Orientation = node.Orientation
+		local cap = materialDetail(node, "BottleCap", Vector3.new(0.45, 1.16, 1.16), Vector3.new(0, 2.55, 0), Color3.fromRGB(40, 105, 180))
+		cap.Shape = Enum.PartType.Cylinder
+		cap.Orientation = node.Orientation
+	elseif materialId == "Metal" then
+		node.Name = node.Name .. "_Can"
+		node.Shape = Enum.PartType.Cylinder
+		node.Size = Vector3.new(2.8, 2.4, 2.4)
+		node.Orientation = Vector3.new(0, 0, 90)
+		node.Material = Enum.Material.Metal
+		local rimColor = Color3.fromRGB(220, 226, 232)
+		local topRim = materialDetail(node, "TopRim", Vector3.new(0.18, 2.52, 2.52), Vector3.new(0, 1.49, 0), rimColor, Enum.Material.Metal)
+		topRim.Shape = Enum.PartType.Cylinder
+		topRim.Orientation = node.Orientation
+		local bottomRim = materialDetail(node, "BottomRim", Vector3.new(0.18, 2.52, 2.52), Vector3.new(0, -1.49, 0), rimColor, Enum.Material.Metal)
+		bottomRim.Shape = Enum.PartType.Cylinder
+		bottomRim.Orientation = node.Orientation
+	end
+end
+
+local function makeDecoration(recipeId: string): Model
+	local recipe = Recipes.byId[recipeId]
+	local model = Instance.new("Model")
+	model.Name = recipeId
+
+	local base = part(model, "Base", Vector3.new(3, 1, 3), Vector3.zero, recipe.color)
+	model.PrimaryPart = base
+
+	if recipeId == "BottlePlanter" then
+		part(model, "Stem", Vector3.new(0.5, 2.5, 0.5), Vector3.new(0, 1.5, 0), Color3.fromRGB(73, 150, 78))
+		local crown = part(model, "Leaves", Vector3.new(2, 1.2, 2), Vector3.new(0, 3, 0), Color3.fromRGB(102, 196, 94))
+		crown.Shape = Enum.PartType.Ball
+	elseif recipeId == "CanStool" then
+		base.Shape = Enum.PartType.Cylinder
+		base.Orientation = Vector3.new(0, 0, 90)
+		base.Size = Vector3.new(2, 3, 3)
+	elseif recipeId == "PatchworkLamp" then
+		part(model, "Pole", Vector3.new(0.4, 3, 0.4), Vector3.new(0, 2, 0), Color3.fromRGB(95, 104, 119), Enum.Material.Metal)
+		local glow = part(model, "Glow", Vector3.new(2.4, 1.4, 2.4), Vector3.new(0, 4, 0), recipe.color, Enum.Material.Neon)
+		glow.Shape = Enum.PartType.Ball
+	elseif recipeId == "RecycledBench" then
+		base.Size = Vector3.new(5, 0.7, 2)
+		base.Position = Vector3.new(0, 1.5, 0)
+		part(model, "Back", Vector3.new(5, 2, 0.5), Vector3.new(0, 2.5, 0.75), recipe.color)
+		part(model, "Leg1", Vector3.new(0.5, 1.5, 0.5), Vector3.new(-1.8, 0.6, 0), Color3.fromRGB(95, 104, 119))
+		part(model, "Leg2", Vector3.new(0.5, 1.5, 0.5), Vector3.new(1.8, 0.6, 0), Color3.fromRGB(95, 104, 119))
+	elseif recipeId == "EcoBot" then
+		base.Size = Vector3.new(2.8, 3, 2)
+		base.Position = Vector3.new(0, 1.5, 0)
+		part(model, "Head", Vector3.new(2.3, 1.8, 2), Vector3.new(0, 4, 0), recipe.color)
+		local eye1 = part(model, "Eye1", Vector3.new(0.35, 0.35, 0.2), Vector3.new(-0.55, 4.2, -1.05), Color3.fromRGB(25, 45, 50), Enum.Material.Neon)
+		local eye2 = eye1:Clone()
+		eye2.Name = "Eye2"
+		eye2.Position = Vector3.new(0.55, 4.2, -1.05)
+		eye2.Parent = model
+	end
+
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.CanCollide = false
+		end
+	end
+	return model
+end
+
+function WorldBuilder.build(): (Folder, BasePart, { { BasePart } })
+	configureAnimeLighting()
+	local previous = workspace:FindFirstChild("MinijimaWorld")
+	if previous then
+		previous:Destroy()
+	end
+
+	local world = Instance.new("Folder")
+	world.Name = "MinijimaWorld"
+	world.Parent = workspace
+
+	local water = part(world, "Water", Vector3.new(180, 2, 180), Vector3.new(0, -3, 0), Color3.fromRGB(45, 205, 255), Enum.Material.Glass)
+	water.Transparency = 0.2
+	water.CanCollide = false
+
+	local island = part(world, "Island", Vector3.new(110, 4, 85), Vector3.new(0, 0, 0), Color3.fromRGB(101, 210, 91), Enum.Material.Grass)
+	island.Shape = Enum.PartType.Block
+
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = "Start"
+	spawn.Size = Vector3.new(8, 1, 8)
+	spawn.Position = Vector3.new(0, 3, 24)
+	spawn.Anchored = true
+	spawn.Neutral = true
+	spawn.Color = Color3.fromRGB(250, 229, 110)
+	spawn.Parent = world
+
+	local workshop = part(world, "Workshop", Vector3.new(18, 9, 14), Vector3.new(0, 6.5, -18), Color3.fromRGB(248, 171, 70), Enum.Material.WoodPlanks)
+	animeOutline(workshop)
+	label(workshop, "リサイクル工房", 24)
+	local workshopPrompt = Instance.new("ProximityPrompt")
+	workshopPrompt.Name = "OpenWorkshop"
+	workshopPrompt.ActionText = "レシピを見る"
+	workshopPrompt.ObjectText = "リサイクル工房"
+	workshopPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	workshopPrompt.HoldDuration = 0
+	workshopPrompt.MaxActivationDistance = 12
+	workshopPrompt.RequiresLineOfSight = false
+	workshopPrompt.Parent = workshop
+
+	local materialsFolder = Instance.new("Folder")
+	materialsFolder.Name = "MaterialNodes"
+	materialsFolder.Parent = world
+	local positions = {
+		Vector3.new(-35, 4, 18), Vector3.new(-28, 4, -3), Vector3.new(-36, 4, -22),
+		Vector3.new(33, 4, 19), Vector3.new(27, 4, 0), Vector3.new(36, 4, -20),
+		Vector3.new(-15, 4, 22), Vector3.new(15, 4, 22), Vector3.new(0, 4, 4),
+	}
+	for index, position in positions do
+		local materialId = Config.MATERIAL_ORDER[((index - 1) % #Config.MATERIAL_ORDER) + 1]
+		local info = Config.MATERIALS[materialId]
+		local node = part(materialsFolder, `{materialId}_{index}`, Vector3.new(3, 3, 3), position, info.color)
+		shapeMaterialNode(node, materialId)
+		animeOutline(node)
+		node:SetAttribute("MaterialId", materialId)
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "Collect"
+		prompt.ActionText = "トングで拾う"
+		prompt.ObjectText = info.displayName
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = Config.COLLECT_DISTANCE
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = node
+	end
+
+	local slotLanes = {}
+	local decorations = Instance.new("Folder")
+	decorations.Name = "DecorationSlots"
+	decorations.Parent = world
+	local laneDefinitions = {
+		{ center = Vector3.new(0, 2.5, -36), axis = Vector3.new(14, 0, 0) },
+		{ center = Vector3.new(0, 2.5, 36), axis = Vector3.new(14, 0, 0) },
+		{ center = Vector3.new(-46, 2.5, 0), axis = Vector3.new(0, 0, 14) },
+		{ center = Vector3.new(46, 2.5, 0), axis = Vector3.new(0, 0, 14) },
+	}
+	for lane, definition in laneDefinitions do
+		local slots = {}
+		for index = 1, Config.DECORATION_SLOTS do
+			local position = definition.center + definition.axis * (index - 2)
+			local slot = part(decorations, `Lane{lane}_Slot{index}`, Vector3.new(10, 0.7, 10), position, Color3.fromRGB(225, 218, 183))
+			slot:SetAttribute("Lane", lane)
+			slot:SetAttribute("Slot", index)
+			table.insert(slots, slot)
+		end
+		table.insert(slotLanes, slots)
+	end
+
+	return world, workshop, slotLanes
+end
+
+function WorldBuilder.renderDecorations(player: Player, slots: { BasePart }, decorations: { string })
+	local world = workspace:FindFirstChild("MinijimaWorld")
+	if world == nil then
+		return
+	end
+	local containerName = `Player_{player.UserId}_Decorations`
+	local previous = world:FindFirstChild(containerName)
+	if previous then
+		previous:Destroy()
+	end
+	local container = Instance.new("Folder")
+	container.Name = containerName
+	container.Parent = world
+
+	for slotIndex = 1, #slots do
+		local recipeId = decorations[slotIndex]
+		if recipeId ~= "" and Recipes.byId[recipeId] then
+			local model = makeDecoration(recipeId)
+			animeOutline(model)
+			model:SetAttribute("OwnerUserId", player.UserId)
+			model:PivotTo(slots[slotIndex].CFrame * CFrame.new(0, 0.7, 0))
+			model.Parent = container
+		end
+	end
+end
+
+return WorldBuilder
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="10">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="11">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="Folder" referent="12">
+        <Properties>
+          <string name="Name">Client</string>
+        </Properties>
+        <Item class="LocalScript" referent="13">
+          <Properties>
+            <string name="Name">GameClient</string>
+            <string name="Source"><![CDATA[--!strict
+
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local Config = require(ReplicatedStorage.Shared.Config)
+local Recipes = require(ReplicatedStorage.Shared.Recipes)
+local Missions = require(ReplicatedStorage.Shared.Missions)
+
+local player = Players.LocalPlayer
+local remotes = ReplicatedStorage:WaitForChild("MinijimaRemotes")
+local stateUpdated = remotes:WaitForChild("StateUpdated") :: RemoteEvent
+local requestCraft = remotes:WaitForChild("RequestCraft") :: RemoteEvent
+local tutorialComplete = remotes:WaitForChild("TutorialComplete") :: RemoteEvent
+local notifyRemote = remotes:WaitForChild("Notify") :: RemoteEvent
+local openWorkshopRemote = remotes:WaitForChild("OpenWorkshop") :: RemoteEvent
+local fetchState = remotes:WaitForChild("FetchState") :: RemoteFunction
+
+type ClientState = {
+	materials: { [string]: number },
+	unlockedRecipes: { [string]: boolean },
+	decorations: { string },
+	tutorialComplete: boolean,
+	persistenceAvailable: boolean,
+	missionStage: number,
+	missionCollected: { [string]: number },
+	cleanliness: number,
+	craftedCount: number,
+}
+
+local state: ClientState = {
+	materials = { Wood = 0, Plastic = 0, Metal = 0 },
+	unlockedRecipes = { BottlePlanter = true },
+	decorations = { "", "", "" },
+	tutorialComplete = false,
+	persistenceAvailable = true,
+	missionStage = 1,
+	missionCollected = { Wood = 0, Plastic = 0, Metal = 0 },
+	cleanliness = 0,
+	craftedCount = 0,
+}
+
+local screen = Instance.new("ScreenGui")
+screen.Name = "MinijimaUI"
+screen.ResetOnSpawn = false
+screen.IgnoreGuiInset = false
+screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screen.Parent = player:WaitForChild("PlayerGui")
+
+local function corner(parent: GuiObject, radius: number)
+	local value = Instance.new("UICorner")
+	value.CornerRadius = UDim.new(0, radius)
+	value.Parent = parent
+end
+
+local function stroke(parent: GuiObject, color: Color3?)
+	local value = Instance.new("UIStroke")
+	value.Color = color or Color3.fromRGB(34, 58, 64)
+	value.Thickness = 2
+	value.Parent = parent
+end
+
+local function gradient(parent: GuiObject, topColor: Color3, bottomColor: Color3)
+	local value = Instance.new("UIGradient")
+	value.Color = ColorSequence.new(topColor, bottomColor)
+	value.Rotation = 90
+	value.Parent = parent
+end
+
+local function textLabel(parent: Instance, text: string, size: UDim2, position: UDim2, fontSize: number, bold: boolean?): TextLabel
+	local label = Instance.new("TextLabel")
+	label.Size = size
+	label.Position = position
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = Color3.fromRGB(27, 47, 52)
+	label.Font = if bold then Enum.Font.GothamBold else Enum.Font.Gotham
+	label.TextSize = fontSize
+	label.TextWrapped = true
+	label.Parent = parent
+	return label
+end
+
+local function button(parent: Instance, text: string, size: UDim2, position: UDim2): TextButton
+	local value = Instance.new("TextButton")
+	value.Size = size
+	value.Position = position
+	value.BackgroundColor3 = Color3.fromRGB(44, 148, 108)
+	value.TextColor3 = Color3.new(1, 1, 1)
+	value.Text = text
+	value.Font = Enum.Font.GothamBold
+	value.TextSize = 18
+	value.AutoButtonColor = true
+	value.Parent = parent
+	corner(value, 12)
+	stroke(value, Color3.fromRGB(27, 57, 91))
+	return value
+end
+
+local hud = Instance.new("Frame")
+hud.Name = "MaterialsHUD"
+hud.AnchorPoint = Vector2.new(0.5, 0)
+hud.Position = UDim2.fromScale(0.5, 0.025)
+hud.Size = UDim2.new(0.88, 0, 0, 68)
+hud.BackgroundColor3 = Color3.fromRGB(250, 248, 235)
+hud.BackgroundTransparency = 0.05
+hud.Parent = screen
+corner(hud, 16)
+stroke(hud)
+gradient(hud, Color3.fromRGB(255, 255, 255), Color3.fromRGB(223, 248, 255))
+local hudConstraint = Instance.new("UISizeConstraint")
+hudConstraint.MaxSize = Vector2.new(620, 68)
+hudConstraint.MinSize = Vector2.new(300, 68)
+hudConstraint.Parent = hud
+
+local materialLabels: { [string]: TextLabel } = {}
+local materialFrames: { [string]: Frame } = {}
+local materialScales: { [string]: UIScale } = {}
+for index, materialId in Config.MATERIAL_ORDER do
+	local item = Instance.new("Frame")
+	item.Size = UDim2.new(1 / 3, -8, 1, -12)
+	item.Position = UDim2.new((index - 1) / 3, 4, 0, 6)
+	item.BackgroundColor3 = Config.MATERIALS[materialId].color
+	item.Parent = hud
+	corner(item, 12)
+	local itemScale = Instance.new("UIScale")
+	itemScale.Parent = item
+	local label = textLabel(item, "", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), 16, true)
+	label.TextColor3 = Color3.new(1, 1, 1)
+	materialLabels[materialId] = label
+	materialFrames[materialId] = item
+	materialScales[materialId] = itemScale
+end
+
+local collectSound = Instance.new("Sound")
+collectSound.Name = "CollectSound"
+collectSound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+collectSound.Volume = 0.35
+collectSound.Parent = screen
+
+local function playMaterialGain(materialId: string, amount: number)
+	local item = materialFrames[materialId]
+	local itemScale = materialScales[materialId]
+	if item == nil or itemScale == nil then
+		return
+	end
+
+	collectSound:Play()
+	itemScale.Scale = 1
+	local grow = TweenService:Create(itemScale, TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.14 })
+	local shrink = TweenService:Create(itemScale, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 })
+	grow:Play()
+	grow.Completed:Once(function()
+		shrink:Play()
+	end)
+
+	local flash = Instance.new("UIStroke")
+	flash.Color = Color3.fromRGB(255, 247, 129)
+	flash.Thickness = 5
+	flash.Transparency = 0
+	flash.Parent = item
+	TweenService:Create(flash, TweenInfo.new(0.55), { Transparency = 1, Thickness = 1 }):Play()
+	task.delay(0.6, function()
+		flash:Destroy()
+	end)
+
+	local gain = textLabel(item, `+{amount}`, UDim2.fromOffset(70, 36), UDim2.new(0.5, -35, 0, -14), 24, true)
+	gain.Name = "MaterialGain"
+	gain.TextColor3 = Color3.fromRGB(255, 247, 129)
+	gain.TextStrokeColor3 = Color3.fromRGB(40, 58, 61)
+	gain.TextStrokeTransparency = 0
+	gain.ZIndex = 30
+	local rise = TweenService:Create(gain, TweenInfo.new(0.75, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0.5, -35, 0, -42),
+		TextTransparency = 1,
+		TextStrokeTransparency = 1,
+	})
+	rise:Play()
+	rise.Completed:Once(function()
+		gain:Destroy()
+	end)
+end
+
+local nextTask = Instance.new("Frame")
+nextTask.Name = "NextTask"
+nextTask.AnchorPoint = Vector2.new(0.5, 0)
+nextTask.Position = UDim2.fromScale(0.5, 0.115)
+nextTask.Size = UDim2.new(0.82, 0, 0, 58)
+nextTask.BackgroundColor3 = Color3.fromRGB(255, 244, 154)
+nextTask.BackgroundTransparency = 0.03
+nextTask.Parent = screen
+corner(nextTask, 16)
+stroke(nextTask, Color3.fromRGB(214, 145, 45))
+gradient(nextTask, Color3.fromRGB(255, 255, 174), Color3.fromRGB(255, 199, 84))
+local nextTaskConstraint = Instance.new("UISizeConstraint")
+nextTaskConstraint.MaxSize = Vector2.new(560, 58)
+nextTaskConstraint.MinSize = Vector2.new(280, 58)
+nextTaskConstraint.Parent = nextTask
+local nextTaskLabel = textLabel(nextTask, "", UDim2.new(1, -24, 1, -10), UDim2.fromOffset(12, 5), 18, true)
+nextTaskLabel.TextColor3 = Color3.fromRGB(82, 54, 20)
+
+local helpButton = button(screen, "？ あそびかた", UDim2.fromOffset(140, 48), UDim2.new(0, 18, 1, -66))
+
+local toast = textLabel(screen, "", UDim2.fromOffset(440, 58), UDim2.new(0.5, -220, 0.2, 0), 20, true)
+toast.AnchorPoint = Vector2.new(0.5, 0)
+toast.Position = UDim2.fromScale(0.5, 0.2)
+toast.BackgroundTransparency = 0.08
+toast.BackgroundColor3 = Color3.fromRGB(27, 47, 52)
+toast.TextColor3 = Color3.new(1, 1, 1)
+toast.Visible = false
+toast.ZIndex = 20
+corner(toast, 14)
+
+local toastVersion = 0
+local function showToast(message: string)
+	toastVersion += 1
+	local version = toastVersion
+	toast.Text = message
+	toast.TextTransparency = 0
+	toast.BackgroundTransparency = 0.08
+	toast.Visible = true
+	task.delay(2.2, function()
+		if version ~= toastVersion then
+			return
+		end
+		local tween = TweenService:Create(toast, TweenInfo.new(0.35), { TextTransparency = 1, BackgroundTransparency = 1 })
+		tween:Play()
+		tween.Completed:Wait()
+		if version == toastVersion then
+			toast.Visible = false
+		end
+	end)
+end
+
+local function playAnimeCelebration()
+	local flash = Instance.new("Frame")
+	flash.Name = "MissionFlash"
+	flash.Size = UDim2.fromScale(1, 1)
+	flash.BackgroundColor3 = Color3.fromRGB(255, 246, 145)
+	flash.BackgroundTransparency = 0.22
+	flash.ZIndex = 40
+	flash.Parent = screen
+	TweenService:Create(flash, TweenInfo.new(0.55), { BackgroundTransparency = 1 }):Play()
+	task.delay(0.6, function()
+		flash:Destroy()
+	end)
+
+	local random = Random.new(20260806)
+	local colors = {
+		Color3.fromRGB(255, 80, 142), Color3.fromRGB(44, 213, 255),
+		Color3.fromRGB(255, 224, 72), Color3.fromRGB(111, 238, 135),
+		Color3.fromRGB(168, 120, 255),
+	}
+	for index = 1, 28 do
+		local piece = Instance.new("Frame")
+		piece.Name = "AnimeConfetti"
+		piece.AnchorPoint = Vector2.new(0.5, 0.5)
+		piece.Size = UDim2.fromOffset(random:NextInteger(8, 16), random:NextInteger(16, 28))
+		piece.Position = UDim2.fromScale(random:NextNumber(0.05, 0.95), -0.08)
+		piece.Rotation = random:NextInteger(-45, 45)
+		piece.BackgroundColor3 = colors[((index - 1) % #colors) + 1]
+		piece.BorderSizePixel = 0
+		piece.ZIndex = 41
+		piece.Parent = screen
+		corner(piece, 4)
+		local fall = TweenService:Create(piece, TweenInfo.new(random:NextNumber(1.2, 2.1), Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = UDim2.fromScale(piece.Position.X.Scale + random:NextNumber(-0.08, 0.08), 1.1),
+			Rotation = piece.Rotation + random:NextInteger(180, 540),
+			BackgroundTransparency = 0.15,
+		})
+		fall:Play()
+		fall.Completed:Once(function()
+			piece:Destroy()
+		end)
+	end
+end
+
+local shade = Instance.new("Frame")
+shade.Name = "Shade"
+shade.Size = UDim2.fromScale(1, 1)
+shade.BackgroundColor3 = Color3.new(0, 0, 0)
+shade.BackgroundTransparency = 0.38
+shade.Visible = false
+shade.ZIndex = 5
+shade.Parent = screen
+
+local workshop = Instance.new("Frame")
+workshop.Name = "WorkshopPanel"
+workshop.AnchorPoint = Vector2.new(0.5, 0.5)
+workshop.Position = UDim2.fromScale(0.5, 0.53)
+workshop.Size = UDim2.new(0.92, 0, 0.78, 0)
+workshop.BackgroundColor3 = Color3.fromRGB(250, 248, 235)
+workshop.Visible = false
+workshop.ZIndex = 6
+workshop.Parent = screen
+corner(workshop, 18)
+stroke(workshop)
+gradient(workshop, Color3.fromRGB(255, 255, 255), Color3.fromRGB(224, 255, 241))
+local workshopConstraint = Instance.new("UISizeConstraint")
+workshopConstraint.MaxSize = Vector2.new(760, 590)
+workshopConstraint.MinSize = Vector2.new(310, 390)
+workshopConstraint.Parent = workshop
+
+local title = textLabel(workshop, "リサイクル工房", UDim2.new(1, -80, 0, 52), UDim2.fromOffset(20, 8), 25, true)
+title.TextXAlignment = Enum.TextXAlignment.Left
+local closeButton = button(workshop, "×", UDim2.fromOffset(48, 44), UDim2.new(1, -60, 0, 12))
+closeButton.ZIndex = 7
+
+local recipeList = Instance.new("ScrollingFrame")
+recipeList.Name = "RecipeList"
+recipeList.Size = UDim2.new(1, -30, 1, -138)
+recipeList.Position = UDim2.fromOffset(15, 66)
+recipeList.BackgroundTransparency = 1
+recipeList.BorderSizePixel = 0
+recipeList.ScrollBarThickness = 8
+recipeList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+recipeList.CanvasSize = UDim2.new()
+recipeList.ZIndex = 7
+recipeList.Parent = workshop
+local listLayout = Instance.new("UIListLayout")
+listLayout.Padding = UDim.new(0, 10)
+listLayout.Parent = recipeList
+
+local hint = textLabel(workshop, "作りたいものを選び、かざり台を押してね", UDim2.new(1, -30, 0, 54), UDim2.new(0, 15, 1, -62), 16, true)
+hint.ZIndex = 7
+
+local selectedRecipeId: string? = nil
+local pendingReplacementSlot: number? = nil
+local pendingReplacementRecipeId: string? = nil
+local recipeButtons: { [string]: TextButton } = {}
+local slotButtons: { TextButton } = {}
+
+local function isDisplayed(recipeId: string): boolean
+	for _, displayedRecipeId in state.decorations do
+		if displayedRecipeId == recipeId then
+			return true
+		end
+	end
+	return false
+end
+
+local function nextRecipeToMake(): string?
+	for _, recipeId in Recipes.order do
+		if state.unlockedRecipes[recipeId] == true and not isDisplayed(recipeId) then
+			return recipeId
+		end
+	end
+	return nil
+end
+
+local function nextTaskText(): string
+	local mission = Missions.order[state.missionStage]
+	if mission == nil then
+		return "島のきれい度 100%：つぎの島をお楽しみに！"
+	end
+	for _, materialId in Config.MATERIAL_ORDER do
+		local remaining = (mission.collect[materialId] or 0) - (state.missionCollected[materialId] or 0)
+		if remaining > 0 then
+			return `【{mission.title}】{Config.MATERIALS[materialId].displayName}を あと{remaining}こ ひろおう`
+		end
+	end
+	if mission.craftTarget ~= nil then
+		local remainingCrafts = math.max(mission.craftTarget - state.craftedCount, 0)
+		return `【{mission.title}】好きな作品を あと{remainingCrafts}こ 作ろう｜きれい度 {state.cleanliness}%`
+	end
+
+	local recipeId = nextRecipeToMake()
+	if recipeId == nil then
+		return "つぎにすること：できた作品を見に行こう！"
+	end
+
+	local recipe = Recipes.byId[recipeId]
+	for _, materialId in Config.MATERIAL_ORDER do
+		local needed = recipe.cost[materialId] or 0
+		local owned = state.materials[materialId] or 0
+		if owned < needed then
+			return `つぎにすること：{Config.MATERIALS[materialId].displayName}を あと{needed - owned}こ ひろおう`
+		end
+	end
+
+	if not workshop.Visible then
+		return "つぎにすること：オレンジの工房へ行こう"
+	end
+	if recipeId == "BottlePlanter" then
+		return "つぎにすること：みどりの「1回でつくる！」を押そう"
+	end
+	if selectedRecipeId ~= recipeId then
+		return `つぎにすること：「{recipe.displayName}」をえらぼう`
+	end
+	return "つぎにすること：あいている台を1つえらぼう"
+end
+
+local goalHighlight = Instance.new("Highlight")
+goalHighlight.Name = "GoalHighlight"
+goalHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+goalHighlight.FillColor = Color3.fromRGB(255, 230, 80)
+goalHighlight.FillTransparency = 0.55
+goalHighlight.OutlineColor = Color3.fromRGB(255, 255, 255)
+goalHighlight.OutlineTransparency = 0
+goalHighlight.Enabled = false
+goalHighlight.Parent = workspace
+
+local goalBillboard = Instance.new("BillboardGui")
+goalBillboard.Name = "GoalBillboard"
+goalBillboard.Size = UDim2.fromOffset(120, 42)
+goalBillboard.StudsOffset = Vector3.new(0, 4.5, 0)
+goalBillboard.AlwaysOnTop = true
+goalBillboard.Enabled = false
+goalBillboard.Parent = screen
+local goalLabel = textLabel(goalBillboard, "▼ ここ！", UDim2.fromScale(1, 1), UDim2.fromScale(0, 0), 20, true)
+goalLabel.TextColor3 = Color3.fromRGB(255, 243, 92)
+goalLabel.TextStrokeColor3 = Color3.fromRGB(45, 55, 58)
+goalLabel.TextStrokeTransparency = 0
+
+local function nearestMaterialNode(materialId: string): BasePart?
+	local world = workspace:FindFirstChild("MinijimaWorld")
+	local nodes = if world then world:FindFirstChild("MaterialNodes") else nil
+	if nodes == nil then
+		return nil
+	end
+
+	local character = player.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	local nearest: BasePart? = nil
+	local nearestDistance = math.huge
+	for _, node in nodes:GetChildren() do
+		if node:IsA("BasePart") and node:GetAttribute("MaterialId") == materialId then
+			local distance = if root and root:IsA("BasePart") then (root.Position - node.Position).Magnitude else 0
+			if distance < nearestDistance then
+				nearest = node
+				nearestDistance = distance
+			end
+		end
+	end
+	return nearest
+end
+
+local function goalTarget(): BasePart?
+	local mission = Missions.order[state.missionStage]
+	if mission then
+		for _, materialId in Config.MATERIAL_ORDER do
+			if (state.missionCollected[materialId] or 0) < (mission.collect[materialId] or 0) then
+				return nearestMaterialNode(materialId)
+			end
+		end
+	end
+	local recipeId = nextRecipeToMake()
+	if recipeId == nil then
+		return nil
+	end
+
+	local recipe = Recipes.byId[recipeId]
+	for _, materialId in Config.MATERIAL_ORDER do
+		local needed = recipe.cost[materialId] or 0
+		if (state.materials[materialId] or 0) < needed then
+			return nearestMaterialNode(materialId)
+		end
+	end
+
+	if workshop.Visible then
+		return nil
+	end
+	local world = workspace:FindFirstChild("MinijimaWorld")
+	local target = if world then world:FindFirstChild("Workshop") else nil
+	return if target and target:IsA("BasePart") then target else nil
+end
+
+local function refreshGoalMarker()
+	local target = goalTarget()
+	goalHighlight.Adornee = target
+	goalHighlight.Enabled = target ~= nil
+	goalBillboard.Adornee = target
+	goalBillboard.Enabled = target ~= nil
+end
+
+local appliedWorldStage = -1
+local appliedCleanliness = -1
+local flowerPositions = {
+	Vector3.new(-22, 3, 10), Vector3.new(21, 3, 13), Vector3.new(-17, 3, -12),
+	Vector3.new(18, 3, -9), Vector3.new(-7, 3, 17), Vector3.new(8, 3, -16),
+	Vector3.new(-31, 3, 1), Vector3.new(30, 3, -2), Vector3.new(-5, 3, -4), Vector3.new(6, 3, 7),
+}
+
+local function applyWorldProgress()
+	if appliedWorldStage == state.missionStage and appliedCleanliness == state.cleanliness then
+		return
+	end
+	local world = workspace:FindFirstChild("MinijimaWorld")
+	if world == nil then
+		return
+	end
+	appliedWorldStage = state.missionStage
+	appliedCleanliness = state.cleanliness
+	local progress = math.clamp(state.cleanliness / 100, 0, 1)
+	local island = world:FindFirstChild("Island")
+	if island and island:IsA("BasePart") then
+		island.Color = Color3.fromRGB(197, 170, 90):Lerp(Color3.fromRGB(72, 223, 105), progress)
+	end
+	local water = world:FindFirstChild("Water")
+	if water and water:IsA("BasePart") then
+		water.Color = Color3.fromRGB(68, 160, 210):Lerp(Color3.fromRGB(40, 220, 255), progress)
+		water.Transparency = 0.35 - progress * 0.18
+	end
+	Lighting.ClockTime = if state.missionStage == 3 then 20 else 14
+	Lighting.Brightness = 2.4 + progress
+
+	local previous = world:FindFirstChild("ClientProgressEffects")
+	if previous then
+		previous:Destroy()
+	end
+	local effects = Instance.new("Folder")
+	effects.Name = "ClientProgressEffects"
+	effects.Parent = world
+	local flowerCount = math.min(math.floor(state.cleanliness / 10), #flowerPositions)
+	for index = 1, flowerCount do
+		local stem = Instance.new("Part")
+		stem.Name = `Flower{index}`
+		stem.Size = Vector3.new(0.25, 1.2, 0.25)
+		stem.Position = flowerPositions[index]
+		stem.Color = Color3.fromRGB(55, 145, 66)
+		stem.Anchored = true
+		stem.CanCollide = false
+		stem.Parent = effects
+		local bloom = Instance.new("Part")
+		bloom.Name = "Bloom"
+		bloom.Shape = Enum.PartType.Ball
+		bloom.Size = Vector3.new(0.8, 0.8, 0.8)
+		bloom.Position = flowerPositions[index] + Vector3.new(0, 0.75, 0)
+		bloom.Color = if index % 2 == 0 then Color3.fromRGB(255, 128, 179) else Color3.fromRGB(255, 226, 82)
+		bloom.Anchored = true
+		bloom.CanCollide = false
+		bloom.Parent = effects
+	end
+end
+
+local confirm = Instance.new("Frame")
+confirm.Name = "ReplaceConfirmation"
+confirm.AnchorPoint = Vector2.new(0.5, 0.5)
+confirm.Position = UDim2.fromScale(0.5, 0.5)
+confirm.Size = UDim2.new(0.82, 0, 0, 190)
+confirm.BackgroundColor3 = Color3.fromRGB(255, 250, 225)
+confirm.Visible = false
+confirm.ZIndex = 14
+confirm.Parent = workshop
+corner(confirm, 16)
+stroke(confirm, Color3.fromRGB(222, 142, 49))
+local confirmText = textLabel(confirm, "", UDim2.new(1, -30, 0, 88), UDim2.fromOffset(15, 14), 18, true)
+confirmText.ZIndex = 15
+local confirmYes = button(confirm, "入れかえる", UDim2.new(0.5, -18, 0, 52), UDim2.new(0, 12, 1, -66))
+confirmYes.BackgroundColor3 = Color3.fromRGB(222, 109, 65)
+confirmYes.ZIndex = 15
+local confirmBack = button(confirm, "もどる", UDim2.new(0.5, -18, 0, 52), UDim2.new(0.5, 6, 1, -66))
+confirmBack.ZIndex = 15
+
+local function costText(recipeId: string): string
+	local pieces = {}
+	local recipe = Recipes.byId[recipeId]
+	for _, materialId in Config.MATERIAL_ORDER do
+		local amount = recipe.cost[materialId] or 0
+		if amount > 0 then
+			table.insert(pieces, `{Config.MATERIALS[materialId].displayName} {amount}`)
+		end
+	end
+	return table.concat(pieces, " / ")
+end
+
+for _, recipeId in Recipes.order do
+	local recipe = Recipes.byId[recipeId]
+	local card = button(recipeList, "", UDim2.new(1, -10, 0, 72), UDim2.new())
+	card.Name = recipeId
+	card.TextXAlignment = Enum.TextXAlignment.Left
+	card.TextWrapped = true
+	card.ZIndex = 8
+	card.BackgroundColor3 = recipe.color
+	card.Activated:Connect(function()
+		if state.unlockedRecipes[recipeId] then
+			selectedRecipeId = recipeId
+			nextTaskLabel.Text = nextTaskText()
+			showToast(`「{recipe.displayName}」を選んだよ。下のかざり台を選ぼう！`)
+		else
+			showToast("ひとつ前のレシピを作ると開くよ")
+		end
+	end)
+	recipeButtons[recipeId] = card
+end
+
+local slotBar = Instance.new("Frame")
+slotBar.Size = UDim2.new(1, -30, 0, 58)
+slotBar.Position = UDim2.new(0, 15, 1, -122)
+slotBar.BackgroundTransparency = 1
+slotBar.ZIndex = 8
+slotBar.Parent = workshop
+for slot = 1, Config.DECORATION_SLOTS do
+	local slotButton = button(slotBar, `台 {slot}`, UDim2.new(1 / 3, -8, 1, 0), UDim2.new((slot - 1) / 3, 4, 0, 0))
+	slotButton.ZIndex = 9
+	slotButton.Activated:Connect(function()
+		if selectedRecipeId == nil then
+			showToast("先にレシピを選んでね")
+			return
+		end
+		local existing = state.decorations[slot]
+		if existing ~= "" and Recipes.byId[existing] then
+			pendingReplacementSlot = slot
+			pendingReplacementRecipeId = selectedRecipeId
+			confirmText.Text = `台{slot}の「{Recipes.byId[existing].displayName}」と入れかえる？\n材料は「入れかえる」を押した時だけ使うよ。`
+			confirm.Visible = true
+			return
+		end
+		requestCraft:FireServer(selectedRecipeId, slot)
+	end)
+	table.insert(slotButtons, slotButton)
+end
+
+local quickCraft = button(workshop, "1回でつくる！", UDim2.new(1, -30, 0, 64), UDim2.new(0, 15, 1, -128))
+quickCraft.Name = "QuickFirstCraft"
+quickCraft.TextSize = 21
+quickCraft.ZIndex = 10
+quickCraft.Visible = false
+
+local function hasMaterials(recipeId: string): boolean
+	local recipe = Recipes.byId[recipeId]
+	for _, materialId in Config.MATERIAL_ORDER do
+		if (state.materials[materialId] or 0) < (recipe.cost[materialId] or 0) then
+			return false
+		end
+	end
+	return true
+end
+
+local function firstEmptySlot(): number
+	for slot = 1, Config.DECORATION_SLOTS do
+		if state.decorations[slot] == "" then
+			return slot
+		end
+	end
+	return 1
+end
+
+quickCraft.Activated:Connect(function()
+	if isDisplayed("BottlePlanter") then
+		return
+	end
+	if not hasMaterials("BottlePlanter") then
+		showToast("木のかけら1こ・プラスチック1こを集めよう")
+		return
+	end
+	selectedRecipeId = "BottlePlanter"
+	requestCraft:FireServer("BottlePlanter", firstEmptySlot())
+end)
+
+confirmYes.Activated:Connect(function()
+	local slot = pendingReplacementSlot
+	local recipeId = pendingReplacementRecipeId
+	confirm.Visible = false
+	pendingReplacementSlot = nil
+	pendingReplacementRecipeId = nil
+	if slot and recipeId then
+		requestCraft:FireServer(recipeId, slot)
+	end
+end)
+
+confirmBack.Activated:Connect(function()
+	confirm.Visible = false
+	pendingReplacementSlot = nil
+	pendingReplacementRecipeId = nil
+end)
+
+local tutorial = Instance.new("Frame")
+tutorial.Name = "Tutorial"
+tutorial.AnchorPoint = Vector2.new(0.5, 0.5)
+tutorial.Position = UDim2.fromScale(0.5, 0.54)
+tutorial.Size = UDim2.new(0.88, 0, 0, 310)
+tutorial.BackgroundColor3 = Color3.fromRGB(250, 248, 235)
+tutorial.Visible = false
+tutorial.ZIndex = 12
+tutorial.Parent = screen
+corner(tutorial, 18)
+stroke(tutorial)
+gradient(tutorial, Color3.fromRGB(255, 255, 255), Color3.fromRGB(232, 247, 255))
+local tutorialConstraint = Instance.new("UISizeConstraint")
+tutorialConstraint.MaxSize = Vector2.new(560, 310)
+tutorialConstraint.MinSize = Vector2.new(300, 310)
+tutorialConstraint.Parent = tutorial
+
+local tutorialTitle = textLabel(tutorial, "", UDim2.new(1, -40, 0, 60), UDim2.fromOffset(20, 25), 26, true)
+tutorialTitle.ZIndex = 13
+local tutorialBody = textLabel(tutorial, "", UDim2.new(1, -50, 0, 125), UDim2.fromOffset(25, 90), 20, false)
+tutorialBody.ZIndex = 13
+local tutorialNext = button(tutorial, "つぎへ", UDim2.new(1, -50, 0, 54), UDim2.new(0, 25, 1, -75))
+tutorialNext.ZIndex = 13
+
+local tutorialPage = 1
+local tutorialPages = {
+	{ "1. 落とし物を拾う", "画面の「つぎにすること」を見よう。\n黄色く光る落とし物に近づいて、トングで拾おう！" },
+	{ "2. 工房で工作する", "オレンジ色の工房へ行こう。\n最初の工作は、緑のボタンを1回押すだけ！" },
+	{ "3. 島に作品を飾る", "完成した作品は黄色い台に飾られるよ。\n次からは好きな台を選べるよ！" },
+	{ "4. ミッションを進める", "島をきれいにすると、新しい場所やレシピが開くよ。\n失敗しても材料はなくならないから安心してね。" },
+	{ "5. 素材・マーク図鑑", "🪵 丸太＝木のかけら　🧴 ボトル＝プラスチック\n🥫 空き缶＝金属　🏭 オレンジ＝工房　🟨 黄色い台＝展示場所" },
+}
+
+local function showTutorial(page: number)
+	tutorialPage = page
+	local content = tutorialPages[page]
+	tutorialTitle.Text = content[1]
+	tutorialBody.Text = content[2]
+	tutorialNext.Text = if page == #tutorialPages then "やってみよう！" else "つぎへ"
+	shade.Visible = true
+	tutorial.Visible = true
+end
+
+local lastTutorialAdvance = 0
+local function advanceTutorial()
+	local now = os.clock()
+	if now - lastTutorialAdvance < 0.25 or not tutorial.Visible then
+		return
+	end
+	lastTutorialAdvance = now
+	if tutorialPage < #tutorialPages then
+		showTutorial(tutorialPage + 1)
+	else
+		tutorial.Visible = false
+		shade.Visible = workshop.Visible
+		tutorialComplete:FireServer()
+	end
+end
+
+tutorialNext.Activated:Connect(advanceTutorial)
+tutorialNext.MouseButton1Click:Connect(advanceTutorial)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed or not tutorial.Visible then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.Return
+		or input.KeyCode == Enum.KeyCode.Space
+		or input.KeyCode == Enum.KeyCode.N
+	then
+		advanceTutorial()
+	end
+end)
+
+helpButton.Activated:Connect(function()
+	showTutorial(1)
+end)
+
+local function setWorkshopVisible(visible: boolean)
+	workshop.Visible = visible
+	shade.Visible = visible
+	if visible and not isDisplayed("BottlePlanter") then
+		selectedRecipeId = "BottlePlanter"
+	end
+	nextTaskLabel.Text = nextTaskText()
+	refreshGoalMarker()
+	applyWorldProgress()
+end
+
+closeButton.Activated:Connect(function()
+	confirm.Visible = false
+	pendingReplacementSlot = nil
+	pendingReplacementRecipeId = nil
+	setWorkshopVisible(false)
+end)
+
+local function refresh()
+	for _, materialId in Config.MATERIAL_ORDER do
+		materialLabels[materialId].Text = `{Config.MATERIALS[materialId].displayName}\n{state.materials[materialId] or 0}`
+	end
+
+	for _, recipeId in Recipes.order do
+		local recipe = Recipes.byId[recipeId]
+		local unlocked = state.unlockedRecipes[recipeId] == true
+		local buttonValue = recipeButtons[recipeId]
+		buttonValue.Text = if unlocked
+			then `  {recipe.displayName}\n  {costText(recipeId)}`
+			else `  🔒 まだひみつのレシピ`
+		buttonValue.BackgroundTransparency = if unlocked then 0 else 0.55
+	end
+
+	for slot, slotButton in slotButtons do
+		local recipeId = state.decorations[slot]
+		local recipe = if recipeId ~= "" then Recipes.byId[recipeId] else nil
+		slotButton.Text = if recipe then `台 {slot}\n{recipe.displayName}` else `台 {slot}\nあき`
+	end
+
+	local firstCraftPending = not isDisplayed("BottlePlanter")
+	local firstCraftReady = firstCraftPending and hasMaterials("BottlePlanter")
+	quickCraft.Visible = firstCraftPending
+	slotBar.Visible = not firstCraftPending
+	quickCraft.Active = firstCraftReady
+	quickCraft.AutoButtonColor = firstCraftReady
+	quickCraft.BackgroundColor3 = if firstCraftReady then Color3.fromRGB(44, 148, 108) else Color3.fromRGB(135, 150, 145)
+	quickCraft.Text = if firstCraftReady then "1回でつくる！" else "木1こ・プラスチック1こを集めよう"
+	hint.Text = if firstCraftPending
+		then "最初は置く場所も自動で決まるよ。ボタンを1回押すだけ！"
+		else "作りたいものを選び、かざり台を押してね"
+
+	nextTaskLabel.Text = nextTaskText()
+	refreshGoalMarker()
+	applyWorldProgress()
+end
+
+local function applyResponsiveLayout()
+	local camera = workspace.CurrentCamera
+	local viewportWidth = if camera then camera.ViewportSize.X else 1024
+	local viewportHeight = if camera then camera.ViewportSize.Y else 768
+	local compact = viewportWidth < 700 or viewportHeight < 600
+
+	hud.Position = UDim2.fromScale(0.5, if compact then 0.012 else 0.025)
+	hud.Size = UDim2.new(if compact then 0.94 else 0.88, 0, 0, if compact then 52 else 68)
+	hudConstraint.MaxSize = Vector2.new(if compact then 520 else 620, if compact then 52 else 68)
+	hudConstraint.MinSize = Vector2.new(280, if compact then 52 else 68)
+
+	nextTask.Position = UDim2.fromScale(0.5, if compact then 0.085 else 0.115)
+	nextTask.Size = UDim2.new(if compact then 0.9 else 0.82, 0, 0, if compact then 46 else 58)
+	nextTaskConstraint.MaxSize = Vector2.new(if compact then 520 else 560, if compact then 46 else 58)
+	nextTaskConstraint.MinSize = Vector2.new(270, if compact then 46 else 58)
+	nextTaskLabel.TextSize = if compact then 15 else 18
+
+	for _, labelValue in materialLabels do
+		labelValue.TextSize = if compact then 13 else 16
+	end
+
+	helpButton.Size = if compact then UDim2.fromOffset(112, 40) else UDim2.fromOffset(140, 48)
+	helpButton.Position = if compact then UDim2.fromOffset(10, 140) else UDim2.new(0, 18, 1, -66)
+	helpButton.TextSize = if compact then 15 else 18
+	toast.Size = if compact then UDim2.new(0.9, 0, 0, 52) else UDim2.fromOffset(440, 58)
+	toast.Position = UDim2.fromScale(0.5, if compact then 0.155 else 0.2)
+	toast.TextSize = if compact then 16 else 20
+end
+
+local camera = workspace.CurrentCamera
+if camera then
+	camera:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsiveLayout)
+end
+applyResponsiveLayout()
+
+stateUpdated.OnClientEvent:Connect(function(nextState: ClientState)
+	local gains: { [string]: number } = {}
+	for _, materialId in Config.MATERIAL_ORDER do
+		local gain = (nextState.materials[materialId] or 0) - (state.materials[materialId] or 0)
+		if gain > 0 then
+			gains[materialId] = gain
+		end
+	end
+	state = nextState
+	refresh()
+	for materialId, gain in gains do
+		playMaterialGain(materialId, gain)
+	end
+end)
+
+notifyRemote.OnClientEvent:Connect(function(message: string)
+	showToast(message)
+	if string.find(message, "ミッション達成！", 1, true) then
+		playAnimeCelebration()
+	end
+end)
+openWorkshopRemote.OnClientEvent:Connect(function()
+	setWorkshopVisible(true)
+end)
+
+player.CharacterAdded:Connect(function()
+	task.defer(refreshGoalMarker)
+end)
+
+task.spawn(function()
+	local world = workspace:WaitForChild("MinijimaWorld", 10)
+	if world then
+		world:WaitForChild("MaterialNodes", 5)
+		refreshGoalMarker()
+		appliedWorldStage = -1
+		appliedCleanliness = -1
+		applyWorldProgress()
+	end
+end)
+
+local ok, initialState = pcall(function()
+	return fetchState:InvokeServer()
+end)
+if ok and type(initialState) == "table" then
+	state = initialState :: ClientState
+end
+refresh()
+if not state.persistenceAvailable then
+	showToast("このテストではセーブできません。終了すると進み具合が消えます")
+end
+if not state.tutorialComplete then
+	showTutorial(1)
+end
+]]></string>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="Workspace" referent="14">
+    <Properties>
+      <string name="Name">Workspace</string>
+      <bool name="NeedsPivotMigration">false</bool>
+      <bool name="StreamingEnabled">true</bool>
+    </Properties>
+  </Item>
+</roblox>

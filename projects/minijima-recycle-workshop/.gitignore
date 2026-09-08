@@ -1,0 +1,6 @@
+# Roblox Studio temporary lock files
+*.rbxl.lock
+
+# Local Rojo runtime logs
+build/rojo-server.log
+build/rojo-server-error.log
