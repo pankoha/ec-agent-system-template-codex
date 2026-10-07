@@ -5,6 +5,7 @@ $required = @(
     "default.project.json",
     "src/shared/Config.luau",
     "src/shared/Recipes.luau",
+    "src/shared/Collection.luau",
     "src/server/DataService.luau",
     "src/server/GameServer.server.luau",
     "src/server/WorldBuilder.luau",

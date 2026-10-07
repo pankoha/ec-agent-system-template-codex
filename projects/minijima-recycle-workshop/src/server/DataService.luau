@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local Recipes = require(ReplicatedStorage.Shared.Recipes)
+local Collection = require(ReplicatedStorage.Shared.Collection)
 
 export type PlayerData = {
 	schemaVersion: number,
@@ -18,6 +19,9 @@ export type PlayerData = {
 	craftedCount: number,
 	discoveredSecrets: { [string]: boolean },
 	lastArea: string,
+	materialLog: { [string]: number },
+	craftedByRecipe: { [string]: number },
+	recipeStyles: { [string]: string },
 }
 
 -- An unpublished local place cannot create a DataStore handle. Keep the MVP
@@ -41,7 +45,7 @@ local DataService = {}
 
 local function defaultData(): PlayerData
 	return {
-		schemaVersion = 3,
+		schemaVersion = 4,
 		materials = { Wood = 0, Plastic = 0, Metal = 0 },
 		unlockedRecipes = { BottlePlanter = true },
 		decorations = { "", "", "" },
@@ -52,6 +56,9 @@ local function defaultData(): PlayerData
 		craftedCount = 0,
 		discoveredSecrets = {},
 		lastArea = "StartPlaza",
+		materialLog = {},
+		craftedByRecipe = {},
+		recipeStyles = {},
 	}
 end
 
@@ -115,6 +122,38 @@ local function sanitize(raw: any): PlayerData
 	if type(raw.lastArea) == "string" and #raw.lastArea <= 64 then
 		clean.lastArea = raw.lastArea
 	end
+	if type(raw.materialLog) == "table" then
+		for key, amount in raw.materialLog do
+			if type(key) == "string" and Collection.isValidEntry(key) and type(amount) == "number" and amount == amount then
+				clean.materialLog[key] = math.clamp(math.floor(amount), 0, 9999)
+			end
+		end
+	end
+	if type(raw.craftedByRecipe) == "table" then
+		for recipeId, amount in raw.craftedByRecipe do
+			if type(recipeId) == "string" and Recipes.byId[recipeId] ~= nil and type(amount) == "number" and amount == amount then
+				clean.craftedByRecipe[recipeId] = math.clamp(math.floor(amount), 0, 9999)
+			end
+		end
+	elseif clean.craftedCount > 0 then
+		-- schemaVersion 3 以前は作品ごとの回数がない。飾っている作品と、次のレシピが
+		-- 開いている作品は少なくとも1回作っているので、作品カードに1回として残す。
+		for index, recipeId in Recipes.order do
+			local nextRecipeId = Recipes.order[index + 1]
+			local displayed = table.find(clean.decorations, recipeId) ~= nil
+			local unlockedNext = nextRecipeId ~= nil and clean.unlockedRecipes[nextRecipeId] == true
+			if displayed or unlockedNext then
+				clean.craftedByRecipe[recipeId] = 1
+			end
+		end
+	end
+	if type(raw.recipeStyles) == "table" then
+		for recipeId, style in raw.recipeStyles do
+			if type(recipeId) == "string" and type(style) == "string" and Collection.isValidStyle(recipeId, style) then
+				clean.recipeStyles[recipeId] = style
+			end
+		end
+	end
 	return clean
 end
 
@@ -173,6 +212,9 @@ function DataService.save(player: Player): boolean
 		craftedCount = data.craftedCount,
 		discoveredSecrets = table.clone(data.discoveredSecrets),
 		lastArea = data.lastArea,
+		materialLog = table.clone(data.materialLog),
+		craftedByRecipe = table.clone(data.craftedByRecipe),
+		recipeStyles = table.clone(data.recipeStyles),
 	}
 	local success = false
 	local message: any = "Unknown save error"

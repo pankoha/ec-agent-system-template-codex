@@ -1000,7 +1000,9 @@ function WorldBuilder.build(): (Folder, BasePart, { { BasePart } }, { { BasePart
 		local node = part(materialsFolder, `{materialId}_{index}`, Vector3.new(3, 3, 3), position, info.color)
 		shapeMaterialNode(node, materialId)
 		animeOutline(node)
-		applyMaterialRarity(node, index)
+		-- 図鑑の12マスをすべて埋められるよう、広場の8番（プラスチック）を
+		-- めずらしい（seed 7 と同じ判定）にする。
+		applyMaterialRarity(node, if index == 8 then 7 else index)
 		node:SetAttribute("MaterialId", materialId)
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.Name = "Collect"

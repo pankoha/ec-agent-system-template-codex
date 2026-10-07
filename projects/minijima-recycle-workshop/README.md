@@ -19,6 +19,7 @@
 - 飾り3枠、段階的なレシピ解放
 - DataStoreによる材料・解放・飾り・案内完了の保存
 - PCとモバイルのProximityPrompt操作
+- 📖 ずかん：素材（3種×4レア度＝12マス）と作品カード（作った回数・選んだ色や模様）
 - 課金、交換、ランキング、独自チャット、外部アセットなし
 
 ## Studioで起動する
@@ -37,6 +38,7 @@
 - `default.project.json`: Rojoマッピング
 - `src/shared/Config.luau`: 材料・上限・時間設定
 - `src/shared/Recipes.luau`: 5レシピ
+- `src/shared/Collection.luau`: ずかんのレア度・マス・選べる色や模様の定義
 - `src/server/GameServer.server.luau`: 収集、制作、解放、Remote検証
 - `src/server/DataService.luau`: 保存と入力サニタイズ
 - `src/server/WorldBuilder.luau`: 島・工房・落とし物・飾りの自動生成

@@ -8,6 +8,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Recipes = require(ReplicatedStorage.Shared.Recipes)
 local Missions = require(ReplicatedStorage.Shared.Missions)
 local WorldContent = require(ReplicatedStorage.Shared.WorldContent)
+local Collection = require(ReplicatedStorage.Shared.Collection)
 local DataService = require(script.Parent.DataService)
 local WorldBuilder = require(script.Parent.WorldBuilder)
 local WorldCycle = require(script.Parent.WorldCycle)
@@ -17,6 +18,23 @@ WorldCycle.start(world)
 
 local remotes = Instance.new("Folder")
 remotes.Name = "MinijimaRemotes"
+
+-- StreamingEnabled では遠くの素材がクライアントに届かないため、図鑑の「まだ」マスの
+-- ヒント（いちばん早く行けるエリア）をサーバーで求めて属性として配る。
+local hintStages: { [string]: number } = {}
+for _, node in world:GetDescendants() do
+	local materialId = node:GetAttribute("MaterialId")
+	local rarity = node:GetAttribute("Rarity")
+	if node:IsA("BasePart") and type(materialId) == "string" and type(rarity) == "string" then
+		local entryKey = Collection.entryKey(materialId, rarity)
+		local areaId = node:GetAttribute("AreaId")
+		local area = WorldContent.areaById[if type(areaId) == "string" then areaId else "StartPlaza"]
+		if entryKey and area and area.unlockStage < (hintStages[entryKey] or math.huge) then
+			hintStages[entryKey] = area.unlockStage
+			remotes:SetAttribute(`Hint_{entryKey}`, area.id)
+		end
+	end
+end
 remotes.Parent = ReplicatedStorage
 
 local stateUpdated = Instance.new("RemoteEvent")
@@ -84,31 +102,7 @@ local function gallerySlotsFor(player: Player): { BasePart }
 	return workshopGallerySlotLanes[lane]
 end
 
-local function snapshot(player: Player)
-	local data = DataService.get(player)
-	if data == nil then
-		return
-	end
-	stateUpdated:FireClient(player, {
-		materials = table.clone(data.materials),
-		unlockedRecipes = table.clone(data.unlockedRecipes),
-		decorations = table.clone(data.decorations),
-		tutorialComplete = data.tutorialComplete,
-		missionStage = data.missionStage,
-		missionCollected = table.clone(data.missionCollected),
-		cleanliness = data.cleanliness,
-		craftedCount = data.craftedCount,
-		discoveredSecrets = table.clone(data.discoveredSecrets),
-		lastArea = data.lastArea,
-		persistenceAvailable = DataService.isPersistent(player),
-	})
-end
-
-fetchState.OnServerInvoke = function(player)
-	local data = DataService.get(player)
-	if data == nil then
-		return nil
-	end
+local function clientState(player: Player, data: DataService.PlayerData)
 	return {
 		materials = table.clone(data.materials),
 		unlockedRecipes = table.clone(data.unlockedRecipes),
@@ -120,8 +114,27 @@ fetchState.OnServerInvoke = function(player)
 		craftedCount = data.craftedCount,
 		discoveredSecrets = table.clone(data.discoveredSecrets),
 		lastArea = data.lastArea,
+		materialLog = table.clone(data.materialLog),
+		craftedByRecipe = table.clone(data.craftedByRecipe),
+		recipeStyles = table.clone(data.recipeStyles),
 		persistenceAvailable = DataService.isPersistent(player),
 	}
+end
+
+local function snapshot(player: Player)
+	local data = DataService.get(player)
+	if data == nil then
+		return
+	end
+	stateUpdated:FireClient(player, clientState(player, data))
+end
+
+fetchState.OnServerInvoke = function(player)
+	local data = DataService.get(player)
+	if data == nil then
+		return nil
+	end
+	return clientState(player, data)
 end
 
 local function allowAction(player: Player, action: string, cooldown: number): boolean
@@ -261,18 +274,33 @@ local function connectMaterialNode(node: Instance)
 		if mission then
 			data.missionCollected[materialId] = (data.missionCollected[materialId] or 0) + gain
 		end
-		DataService.markDirty(player)
 		local rarity = node:GetAttribute("Rarity")
+		local rarityName = if type(rarity) == "string" then rarity else "ふつう"
+		local entryKey = Collection.entryKey(materialId, rarityName)
+		local firstFind = false
+		local completedCollection = false
+		if entryKey then
+			local wasComplete = Collection.isComplete(data.materialLog)
+			local previous = data.materialLog[entryKey] or 0
+			data.materialLog[entryKey] = math.min(previous + gain, 9999)
+			firstFind = previous == 0
+			completedCollection = not wasComplete and Collection.isComplete(data.materialLog)
+		end
+		DataService.markDirty(player)
 		local remaining = if mission then math.max((mission.collect[materialId] or 0) - (data.missionCollected[materialId] or 0), 0) else 0
 		feedback:FireClient(player, {
 			kind = "Material",
 			materialId = materialId,
 			name = Config.MATERIALS[materialId].displayName,
 			amount = gain,
-			rarity = if type(rarity) == "string" then rarity else "ふつう",
+			rarity = rarityName,
+			firstFind = firstFind,
 			remaining = remaining,
 			missionTitle = if mission then mission.title else "島づくり",
 		})
+		if completedCollection then
+			feedback:FireClient(player, { kind = "CollectionComplete" })
+		end
 		notify:FireClient(player, `{Config.MATERIALS[materialId].displayName} +{gain}`)
 		snapshot(player)
 
@@ -542,7 +570,7 @@ if guidePrompt and guidePrompt:IsA("ProximityPrompt") then
 	end)
 end
 
-requestCraft.OnServerEvent:Connect(function(player, recipeId: any, slot: any)
+requestCraft.OnServerEvent:Connect(function(player, recipeId: any, slot: any, style: any)
 	if not allowAction(player, "craft", Config.CRAFT_COOLDOWN) then
 		return
 	end
@@ -572,6 +600,10 @@ requestCraft.OnServerEvent:Connect(function(player, recipeId: any, slot: any)
 	end
 	data.decorations[slot] = recipeId
 	data.craftedCount += 1
+	data.craftedByRecipe[recipeId] = math.min((data.craftedByRecipe[recipeId] or 0) + 1, 9999)
+	if type(style) == "string" and Collection.isValidStyle(recipeId, style) then
+		data.recipeStyles[recipeId] = style
+	end
 	local unlockedId = nextRecipeId(recipeId)
 	local newlyUnlocked = unlockedId ~= nil and data.unlockedRecipes[unlockedId] ~= true
 	if unlockedId then

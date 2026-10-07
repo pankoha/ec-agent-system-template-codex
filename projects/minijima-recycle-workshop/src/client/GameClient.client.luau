@@ -12,6 +12,7 @@ local Recipes = require(ReplicatedStorage.Shared.Recipes)
 local Missions = require(ReplicatedStorage.Shared.Missions)
 local WorldContent = require(ReplicatedStorage.Shared.WorldContent)
 local CraftingActivities = require(ReplicatedStorage.Shared.CraftingActivities)
+local Collection = require(ReplicatedStorage.Shared.Collection)
 
 local player = Players.LocalPlayer
 local remotes = ReplicatedStorage:WaitForChild("MinijimaRemotes")
@@ -37,6 +38,9 @@ type ClientState = {
 	craftedCount: number,
 	discoveredSecrets: { [string]: boolean },
 	lastArea: string,
+	materialLog: { [string]: number },
+	craftedByRecipe: { [string]: number },
+	recipeStyles: { [string]: string },
 }
 
 local state: ClientState = {
@@ -51,6 +55,9 @@ local state: ClientState = {
 	craftedCount = 0,
 	discoveredSecrets = {},
 	lastArea = "StartPlaza",
+	materialLog = {},
+	craftedByRecipe = {},
+	recipeStyles = {},
 }
 
 local screen = Instance.new("ScreenGui")
@@ -467,7 +474,14 @@ showNextFeedback = function()
 	eventShade.Visible = true
 	eventCard.Size = UDim2.new(0.6, 0, 0, 330)
 	TweenService:Create(eventCard, TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.new(0.88, 0, 0, 410) }):Play()
-	if isMission then
+	if payload.kind == "CollectionComplete" then
+		changePanel.Visible = false
+		eventIcon.Text = "🏅"
+		eventIcon.BackgroundColor3 = Color3.fromRGB(255, 214, 65)
+		eventTitle.Text = "ずかんマスター！"
+		eventBody.Text = `{Collection.ENTRY_COUNT}しゅるいの素材をぜんぶ見つけたよ！\nずかんに金のバッジがついたよ`
+		playAnimeCelebration()
+	elseif isMission then
 		changePanel.Visible = true
 		beforePanel.Text = `BEFORE\n島の元気 {payload.beforeCleanliness}%`
 		afterPanel.Text = `AFTER\n島の元気 {payload.afterCleanliness}%`
@@ -830,6 +844,7 @@ craftDetail.ZIndex = 42
 
 local activeCraftRecipe: string? = nil
 local activeCraftSlot: number? = nil
+local activeCraftStyle: string? = nil
 local activeCraftStep = 1
 local activeClicks = 0
 local activeOrder = 1
@@ -844,10 +859,12 @@ local function finishCraftActivity()
 	local slot = activeCraftSlot
 	craftActivity.Visible = false
 	shade.Visible = workshop.Visible
+	local style = activeCraftStyle
 	activeCraftRecipe = nil
 	activeCraftSlot = nil
+	activeCraftStyle = nil
 	if recipeId and slot then
-		requestCraft:FireServer(recipeId, slot)
+		requestCraft:FireServer(recipeId, slot, style)
 	end
 end
 
@@ -917,6 +934,9 @@ renderCraftStep = function()
 					craftHint.Text = "見本をもう一度見てみよう。材料は減らないよ"
 					craftHint.Visible = true
 					return
+				elseif step.correctChoice == nil then
+					-- 正解のない「好きなものを選ぶ」工程。作品カードに残す。
+					activeCraftStyle = choiceText
 				end
 				advanceCraftStep()
 			end)
@@ -975,6 +995,7 @@ local function beginCraftActivity(recipeId: string, slot: number)
 	end
 	activeCraftRecipe = recipeId
 	activeCraftSlot = slot
+	activeCraftStyle = nil
 	activeCraftStep = 1
 	activeClicks = 0
 	activeOrder = 1
@@ -1224,6 +1245,213 @@ local function refreshWorldStatus()
 	worldStatusLabel.Text = `📍 {areaName}　{weatherIcon}　🗺 {unlockedAreaCount()}/16　🌱 {state.cleanliness}%`
 end
 
+local encyclopediaButton = button(screen, "📖 ずかん", UDim2.fromOffset(140, 48), UDim2.new(0, 168, 1, -66))
+encyclopediaButton.Name = "EncyclopediaButton"
+encyclopediaButton.BackgroundColor3 = Color3.fromRGB(255, 157, 50)
+
+local encyclopedia = Instance.new("Frame")
+encyclopedia.Name = "EncyclopediaPanel"
+encyclopedia.AnchorPoint = Vector2.new(0.5, 0.5)
+encyclopedia.Position = UDim2.fromScale(0.5, 0.53)
+encyclopedia.Size = UDim2.new(0.92, 0, 0.8, 0)
+encyclopedia.BackgroundColor3 = Color3.fromRGB(255, 250, 230)
+encyclopedia.Visible = false
+encyclopedia.ZIndex = 14
+encyclopedia.Parent = screen
+corner(encyclopedia, 18)
+stroke(encyclopedia, Color3.fromRGB(41, 65, 94))
+local encyclopediaConstraint = Instance.new("UISizeConstraint")
+encyclopediaConstraint.MaxSize = Vector2.new(760, 600)
+encyclopediaConstraint.MinSize = Vector2.new(310, 420)
+encyclopediaConstraint.Parent = encyclopedia
+
+local encyclopediaTitle = textLabel(encyclopedia, "📖 ずかん", UDim2.new(1, -80, 0, 44), UDim2.fromOffset(18, 8), 24, true)
+encyclopediaTitle.TextXAlignment = Enum.TextXAlignment.Left
+encyclopediaTitle.ZIndex = 15
+local encyclopediaClose = button(encyclopedia, "×", UDim2.fromOffset(48, 44), UDim2.new(1, -60, 0, 10))
+encyclopediaClose.BackgroundColor3 = Color3.fromRGB(255, 70, 78)
+encyclopediaClose.ZIndex = 16
+
+local materialTab = button(encyclopedia, "そざい", UDim2.new(0.5, -24, 0, 44), UDim2.fromOffset(18, 58))
+materialTab.ZIndex = 16
+local worksTab = button(encyclopedia, "さくひん", UDim2.new(0.5, -24, 0, 44), UDim2.new(0.5, 6, 0, 58))
+worksTab.ZIndex = 16
+
+local materialPage = Instance.new("Frame")
+materialPage.Name = "MaterialPage"
+materialPage.Size = UDim2.new(1, -36, 1, -122)
+materialPage.Position = UDim2.fromOffset(18, 112)
+materialPage.BackgroundTransparency = 1
+materialPage.ZIndex = 15
+materialPage.Parent = encyclopedia
+
+local worksPage = Instance.new("ScrollingFrame")
+worksPage.Name = "WorksPage"
+worksPage.Size = materialPage.Size
+worksPage.Position = materialPage.Position
+worksPage.BackgroundTransparency = 1
+worksPage.BorderSizePixel = 0
+worksPage.ScrollBarThickness = 8
+worksPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+worksPage.CanvasSize = UDim2.new()
+worksPage.Visible = false
+worksPage.ZIndex = 15
+worksPage.Parent = encyclopedia
+local worksGrid = Instance.new("UIGridLayout")
+worksGrid.CellSize = UDim2.new(0.5, -8, 0, 176)
+worksGrid.CellPadding = UDim2.fromOffset(8, 8)
+worksGrid.SortOrder = Enum.SortOrder.LayoutOrder
+worksGrid.Parent = worksPage
+
+local function fitText(label: TextLabel, maxSize: number)
+	label.TextScaled = true
+	local limit = Instance.new("UITextSizeConstraint")
+	limit.MaxTextSize = maxSize
+	limit.MinTextSize = 9
+	limit.Parent = label
+end
+
+-- そざいページ: 左に素材名、上にレア度、3素材 x 4レア度のマス。
+local rowCount = #Config.MATERIAL_ORDER
+local columnWidth = 1 / (#Collection.rarities + 1)
+local headerHeight = 30
+local materialCells: { [string]: TextLabel } = {}
+for column, rarity in Collection.rarities do
+	local header = textLabel(materialPage, rarity.displayName, UDim2.new(columnWidth, -6, 0, headerHeight), UDim2.new(columnWidth * column, 3, 0, 0), 14, true)
+	header.BackgroundColor3 = rarity.color
+	header.BackgroundTransparency = 0
+	header.ZIndex = 16
+	corner(header, 8)
+	fitText(header, 15)
+end
+for row, materialId in Config.MATERIAL_ORDER do
+	local rowPosition = UDim2.new(0, 0, (row - 1) / rowCount, headerHeight + 6 - (headerHeight + 6) * (row - 1) / rowCount)
+	local rowHeight = UDim2.new(0, 0, 1 / rowCount, -(headerHeight + 6) / rowCount - 6)
+	local rowLabel = textLabel(materialPage, `{materialIcons[materialId] or "●"}\n{Config.MATERIALS[materialId].displayName}`, UDim2.new(columnWidth, -6, 0, 0) + rowHeight, rowPosition, 15, true)
+	rowLabel.BackgroundColor3 = Config.MATERIALS[materialId].color
+	rowLabel.BackgroundTransparency = 0
+	rowLabel.TextColor3 = Color3.new(1, 1, 1)
+	rowLabel.ZIndex = 16
+	corner(rowLabel, 10)
+	fitText(rowLabel, 16)
+	for column, rarity in Collection.rarities do
+		local cell = textLabel(materialPage, "", UDim2.new(columnWidth, -6, 0, 0) + rowHeight, rowPosition + UDim2.new(columnWidth * column, 3, 0, 0), 14, true)
+		cell.BackgroundTransparency = 0
+		cell.ZIndex = 16
+		corner(cell, 10)
+		stroke(cell, rarity.color)
+		fitText(cell, 16)
+		materialCells[`{materialId}_{rarity.id}`] = cell
+	end
+end
+
+-- さくひんページ: 作品ごとのカード。
+local workCards: { [string]: { frame: Frame, name: TextLabel, body: TextLabel } } = {}
+for order, recipeId in Recipes.order do
+	local cardFrame = Instance.new("Frame")
+	cardFrame.Name = recipeId
+	cardFrame.LayoutOrder = order
+	cardFrame.ZIndex = 16
+	cardFrame.Parent = worksPage
+	corner(cardFrame, 14)
+	stroke(cardFrame, Color3.fromRGB(41, 65, 94))
+	local cardName = textLabel(cardFrame, "", UDim2.new(1, -16, 0, 34), UDim2.fromOffset(8, 6), 18, true)
+	cardName.ZIndex = 17
+	fitText(cardName, 19)
+	local cardBody = textLabel(cardFrame, "", UDim2.new(1, -16, 1, -48), UDim2.fromOffset(8, 42), 14, false)
+	cardBody.TextYAlignment = Enum.TextYAlignment.Top
+	cardBody.ZIndex = 17
+	fitText(cardBody, 15)
+	workCards[recipeId] = { frame = cardFrame, name = cardName, body = cardBody }
+end
+
+local function hintFor(entryKey: string): string
+	local areaId = remotes:GetAttribute(`Hint_{entryKey}`)
+	local area = if type(areaId) == "string" then WorldContent.areaById[areaId] else nil
+	if area == nil then
+		return "島のどこか"
+	end
+	if state.missionStage >= area.unlockStage then
+		return area.name
+	end
+	return `{area.name}（ミッションを進めると行ける）`
+end
+
+local function refreshEncyclopedia()
+	local found = Collection.foundCount(state.materialLog)
+	local complete = Collection.isComplete(state.materialLog)
+	-- 全部そろったら、タイトルそのものを金のバッジ表示にする（スマホ幅でも重ならない）。
+	encyclopediaTitle.Text = if complete
+		then `🏅 ずかんマスター　{found}/{Collection.ENTRY_COUNT}`
+		else `📖 ずかん　そざい {found}/{Collection.ENTRY_COUNT}`
+	encyclopediaTitle.TextColor3 = if complete then Color3.fromRGB(196, 132, 0) else Color3.fromRGB(27, 47, 52)
+	encyclopediaButton.Text = if complete then "🏅 ずかん" else "📖 ずかん"
+
+	for entryKey, cell in materialCells do
+		local amount = state.materialLog[entryKey] or 0
+		if amount > 0 then
+			cell.Text = `●\n{amount}こ見つけた`
+			cell.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			cell.TextColor3 = Color3.fromRGB(27, 47, 52)
+		else
+			cell.Text = `？\nヒント：{hintFor(entryKey)}`
+			cell.BackgroundColor3 = Color3.fromRGB(214, 220, 228)
+			cell.TextColor3 = Color3.fromRGB(80, 92, 108)
+		end
+	end
+
+	for index, recipeId in Recipes.order do
+		local recipe = Recipes.byId[recipeId]
+		local card = workCards[recipeId]
+		local count = state.craftedByRecipe[recipeId] or 0
+		if count > 0 then
+			local style = state.recipeStyles[recipeId]
+			local styleText = if style then `\nえらんだもの：{style}` else ""
+			card.frame.BackgroundColor3 = recipe.color
+			card.name.Text = recipe.displayName
+			card.body.Text = `{costText(recipeId)}\nつくった回数：{count}{styleText}\n「{recipe.description}」`
+		else
+			local previousId = Recipes.order[index - 1]
+			local hintText = if state.unlockedRecipes[recipeId]
+				then "工房で作れるよ！"
+				elseif previousId then `「{Recipes.byId[previousId].displayName}」を作ると開くよ`
+				else "工房で作れるよ！"
+			card.frame.BackgroundColor3 = Color3.fromRGB(150, 158, 172)
+			card.name.Text = "？？？"
+			card.body.Text = `まだ作っていない作品\nヒント：{hintText}`
+		end
+	end
+end
+
+local function showEncyclopediaPage(works: boolean)
+	materialPage.Visible = not works
+	worksPage.Visible = works
+	materialTab.BackgroundColor3 = if works then Color3.fromRGB(150, 158, 172) else Color3.fromRGB(80, 215, 62)
+	worksTab.BackgroundColor3 = if works then Color3.fromRGB(80, 215, 62) else Color3.fromRGB(150, 158, 172)
+end
+
+local function setEncyclopediaVisible(visible: boolean)
+	encyclopedia.Visible = visible
+	shade.Visible = visible or workshop.Visible
+	if visible then
+		refreshEncyclopedia()
+	end
+end
+
+showEncyclopediaPage(false)
+materialTab.Activated:Connect(function()
+	showEncyclopediaPage(false)
+end)
+worksTab.Activated:Connect(function()
+	showEncyclopediaPage(true)
+end)
+encyclopediaButton.Activated:Connect(function()
+	setEncyclopediaVisible(not encyclopedia.Visible)
+end)
+encyclopediaClose.Activated:Connect(function()
+	setEncyclopediaVisible(false)
+end)
+
 local function refresh()
 	for _, materialId in Config.MATERIAL_ORDER do
 		materialLabels[materialId].Text = tostring(state.materials[materialId] or 0)
@@ -1255,6 +1483,9 @@ local function refresh()
 	nextTaskLabel.Text = nextTaskText()
 	refreshGoalMarker()
 	applyWorldProgress()
+	if encyclopedia.Visible then
+		refreshEncyclopedia()
+	end
 end
 
 local function applyResponsiveLayout()
@@ -1284,6 +1515,10 @@ local function applyResponsiveLayout()
 	helpButton.Size = if compact then UDim2.fromOffset(112, 40) else UDim2.fromOffset(140, 48)
 	helpButton.Position = if compact then UDim2.fromOffset(10, 140) else UDim2.new(0, 18, 1, -66)
 	helpButton.TextSize = if compact then 15 else 18
+	encyclopediaButton.Size = helpButton.Size
+	encyclopediaButton.Position = if compact then UDim2.fromOffset(128, 140) else UDim2.new(0, 168, 1, -66)
+	encyclopediaButton.TextSize = helpButton.TextSize
+	worksGrid.CellSize = if viewportWidth < 560 then UDim2.new(1, -8, 0, 150) else UDim2.new(0.5, -8, 0, 176)
 	toast.Size = if compact then UDim2.new(0.9, 0, 0, 52) else UDim2.fromOffset(440, 58)
 	toast.Position = UDim2.fromScale(0.5, if compact then 0.155 else 0.2)
 	toast.TextSize = if compact then 16 else 20
@@ -1338,7 +1573,8 @@ feedbackRemote.OnClientEvent:Connect(function(payload: any)
 		local version = rewardBannerVersion
 		local rarityPrefix = if payload.rarity ~= "ふつう" then `★ {payload.rarity}！ ` else ""
 		local progressText = if payload.remaining > 0 then `「{payload.missionTitle}」まであと{payload.remaining}こ` else "必要な数がそろった！ 工房へ行こう！"
-		rewardBannerText.Text = `{rarityPrefix}{payload.name} ＋{payload.amount}\n{progressText}`
+		local firstFindText = if payload.firstFind then "📖 ずかんに登録！ " else ""
+		rewardBannerText.Text = `{firstFindText}{rarityPrefix}{payload.name} ＋{payload.amount}\n{progressText}`
 		rewardBanner.BackgroundColor3 = if payload.rarity == "伝説" then Color3.fromRGB(255, 143, 236) elseif payload.rarity == "すごくめずらしい" then Color3.fromRGB(205, 158, 255) elseif payload.rarity == "めずらしい" then Color3.fromRGB(255, 232, 116) else Color3.fromRGB(210, 250, 225)
 		rewardBanner.Position = UDim2.fromScale(0.5, 0.32)
 		rewardBanner.Visible = true
@@ -1346,7 +1582,7 @@ feedbackRemote.OnClientEvent:Connect(function(payload: any)
 		task.delay(5, function()
 			if rewardBannerVersion == version then rewardBanner.Visible = false end
 		end)
-	elseif payload.kind == "CraftComplete" or payload.kind == "MissionComplete" then
+	elseif payload.kind == "CraftComplete" or payload.kind == "MissionComplete" or payload.kind == "CollectionComplete" then
 		table.insert(eventQueue, payload)
 		if showNextFeedback then showNextFeedback() end
 	end
