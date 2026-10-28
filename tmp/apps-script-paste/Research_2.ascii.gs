@@ -1,18 +1,3 @@
-function syncResearchManagementOnChange(event) {
-  const changeType = String(event && event.changeType ? event.changeType : '');
-  if (!changeType || ['REMOVE_ROW', 'INSERT_ROW', 'OTHER'].indexOf(changeType) >= 0) {
-    const spreadsheet = getTargetSpreadsheet_();
-    const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
-    if (typeof enforceProtectedDeletedRows_ === 'function') {
-      enforceProtectedDeletedRows_(spreadsheet, orderSheet, `onChange:${changeType || 'UNKNOWN'} 132\u884C\u76EE\u4EE5\u964D\u4FDD\u8B77`);
-    }
-    if (typeof recordDeletedOrdersSinceLastSnapshot_ === 'function') {
-      recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, `onChange:${changeType || 'UNKNOWN'}`);
-    }
-    syncResearchManagementByOrderNumber();
-  }
-}
-
 function researchImportedOrderRowsAfterImport_(spreadsheet, orderNumbers) {
   const uniqueOrderNumbers = Array.from(new Set((orderNumbers || []).filter(Boolean)));
   if (!uniqueOrderNumbers.length) {
@@ -601,5 +586,31 @@ function uniqueResearchKeywordLines_(keywords) {
     seen.add(key);
     return true;
   });
+}
+
+function fetchSearchResults_(site, url, keyword, maxPrice, rowData) {
+  if (isResearchDeadlineReached_(rowData)) {
+    return { ok: true, items: [], rejectedForMissingData: 0 };
+  }
+  try {
+    const response = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects: true,
+      headers: {
+        'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
+        'Accept-Language': 'ja-JP,ja;q=0.9',
+      },
+    });
+    const status = response.getResponseCode();
+    if (status < 200 || status >= 400) {
+      return { ok: false, items: [], rejectedForMissingData: 0 };
+    }
+    const extracted = extractCandidateItems_(String(response.getContentText() || ''), site, keyword);
+    const enriched = enrichSearchResultsFromProductPages_(extracted, site, keyword, rowData || {});
+    enriched.items = enriched.items.filter((item) => isCompatibleResearchProductCandidate_(item, rowData || {}, keyword));
+    return enriched;
+  } catch (error) {
+    return { ok: false, items: [], rejectedForMissingData: 0 };
+  }
 }
 
