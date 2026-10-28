@@ -1800,10 +1800,12 @@ function buildAmazonAsinResearchLines_(rowData) {
 }
 
 function inspectResearchUrlAvailability_(url) {
+  const trustedUrl = canonicalResearchUrl_(url);
+  if (!trustedUrl) return { availability: 'unknown', reason: '許可されていない商品URL' };
   try {
-    const response = UrlFetchApp.fetch(url, {
+    const response = UrlFetchApp.fetch(trustedUrl, {
       muteHttpExceptions: true,
-      followRedirects: true,
+      followRedirects: false,
       headers: {
         'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
         'Accept-Language': 'ja-JP,ja;q=0.9',
@@ -1830,12 +1832,16 @@ function inspectResearchUrlAvailability_(url) {
 function inspectResearchUrlsAvailability_(urls) {
   const targets = (urls || []).filter(Boolean);
   if (!targets.length) return [];
+  // Preserve result ordering; reject invalid targets before any batch network call.
+  if (targets.some((url) => !canonicalResearchUrl_(url))) {
+    return targets.map(inspectResearchUrlAvailability_);
+  }
   if (!UrlFetchApp.fetchAll) return targets.map(inspectResearchUrlAvailability_);
   try {
     const responses = UrlFetchApp.fetchAll(targets.map((url) => ({
-      url,
+      url: canonicalResearchUrl_(url),
       muteHttpExceptions: true,
-      followRedirects: true,
+      followRedirects: false,
       headers: {
         'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
         'Accept-Language': 'ja-JP,ja;q=0.9',
@@ -2084,6 +2090,26 @@ function normalizeResearchProductUrl_(rawUrl, siteName) {
       NetOff: 'https://www.netoff.co.jp',
     };
     url = `${hosts[siteName] || ''}${url}`;
+  }
+
+  // A matching domain substring in a query/path is not proof of the URL's host.
+  // This list also prevents external sites from being fetched under a trusted label.
+  const allowedHosts = {
+    Amazon: ['www.amazon.co.jp', 'amazon.co.jp'],
+    Yahoo: ['page.auctions.yahoo.co.jp', 'auctions.yahoo.co.jp'],
+    YahooFleamarket: ['paypayfleamarket.yahoo.co.jp'],
+    Mercari: ['jp.mercari.com'],
+    Jimoty: ['jmty.jp', 'www.jmty.jp'],
+    Rakuten: ['item.rakuten.co.jp'],
+    Surugaya: ['www.suruga-ya.jp', 'suruga-ya.jp'],
+    Offmall: ['netmall.hardoff.co.jp'],
+    SecondStreet: ['www.2ndstreet.jp', '2ndstreet.jp'],
+    NetOff: ['www.netoff.co.jp', 'netoff.co.jp'],
+  };
+  const authority = url.match(/^https:\/\/([^/?#]+)(?:[/?#]|$)/i);
+  if (!authority || !allowedHosts[siteName] ||
+      !allowedHosts[siteName].includes(authority[1].toLowerCase())) {
+    return '';
   }
 
   let match;
