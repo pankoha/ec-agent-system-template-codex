@@ -1,29 +1,3 @@
-function fetchSearchResults_(site, url, keyword, maxPrice, rowData) {
-  if (isResearchDeadlineReached_(rowData)) {
-    return { ok: true, items: [], rejectedForMissingData: 0 };
-  }
-  try {
-    const response = UrlFetchApp.fetch(url, {
-      muteHttpExceptions: true,
-      followRedirects: true,
-      headers: {
-        'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
-        'Accept-Language': 'ja-JP,ja;q=0.9',
-      },
-    });
-    const status = response.getResponseCode();
-    if (status < 200 || status >= 400) {
-      return { ok: false, items: [], rejectedForMissingData: 0 };
-    }
-    const extracted = extractCandidateItems_(String(response.getContentText() || ''), site, keyword);
-    const enriched = enrichSearchResultsFromProductPages_(extracted, site, keyword, rowData || {});
-    enriched.items = enriched.items.filter((item) => isCompatibleResearchProductCandidate_(item, rowData || {}, keyword));
-    return enriched;
-  } catch (error) {
-    return { ok: false, items: [], rejectedForMissingData: 0 };
-  }
-}
-
 function enrichSearchResultsFromProductPages_(extracted, site, keyword, rowData) {
   const items = [];
   const seen = new Set();
@@ -534,10 +508,12 @@ function buildAmazonAsinResearchLines_(rowData) {
 }
 
 function inspectResearchUrlAvailability_(url) {
+  const trustedUrl = canonicalResearchUrl_(url);
+  if (!trustedUrl) return { availability: 'unknown', reason: '許可されていない商品URL' };
   try {
-    const response = UrlFetchApp.fetch(url, {
+    const response = UrlFetchApp.fetch(trustedUrl, {
       muteHttpExceptions: true,
-      followRedirects: true,
+      followRedirects: false,
       headers: {
         'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
         'Accept-Language': 'ja-JP,ja;q=0.9',
@@ -564,12 +540,16 @@ function inspectResearchUrlAvailability_(url) {
 function inspectResearchUrlsAvailability_(urls) {
   const targets = (urls || []).filter(Boolean);
   if (!targets.length) return [];
+  // Preserve result ordering; reject invalid targets before any batch network call.
+  if (targets.some((url) => !canonicalResearchUrl_(url))) {
+    return targets.map(inspectResearchUrlAvailability_);
+  }
   if (!UrlFetchApp.fetchAll) return targets.map(inspectResearchUrlAvailability_);
   try {
     const responses = UrlFetchApp.fetchAll(targets.map((url) => ({
-      url,
+      url: canonicalResearchUrl_(url),
       muteHttpExceptions: true,
-      followRedirects: true,
+      followRedirects: false,
       headers: {
         'User-Agent': RESEARCH_AUTOMATION_CONFIG.userAgent,
         'Accept-Language': 'ja-JP,ja;q=0.9',
@@ -711,5 +691,30 @@ function appendUrlToMainSheet(rowNumber, columnNumber, resultText) {
 function isDuplicateUrlInCell_(cellValue, url) {
   const target = canonicalResearchUrl_(url);
   return !!target && extractUrls_(cellValue).map(canonicalResearchUrl_).indexOf(target) >= 0;
+}
+
+function isDuplicateUrlInCell(cellValue, url) {
+  return isDuplicateUrlInCell_(cellValue, url);
+}
+
+function extractUrls_(text) {
+  return String(text || '').match(/https?:\/\/\S+/g) || [];
+}
+
+function parseResearchLineForComparison_(line) {
+  const text = String(line || '');
+  const priceParts = text.match(/([0-9０-９,，]+)\s*円/g) || [];
+  const prices = priceParts
+    .map((part) => Number(toHalfWidthNumber_(part).replace(/[^\d]/g, '')))
+    .filter((price) => price > 0);
+  const shippingKnown = /送料要確認/.test(text) ? false : prices.length > 1 || /送料無料/.test(text);
+  const price = prices.length
+    ? prices[0] + (shippingKnown && prices.length > 1 ? prices[1] : 0)
+    : 0;
+  return {
+    url: canonicalResearchUrl_((text.match(/https?:\/\/\S+/) || [''])[0]),
+    price,
+    conditionRank: researchConditionRank_(text),
+  };
 }
 
