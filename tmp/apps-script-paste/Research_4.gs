@@ -1,28 +1,3 @@
-function isDuplicateUrlInCell(cellValue, url) {
-  return isDuplicateUrlInCell_(cellValue, url);
-}
-
-function extractUrls_(text) {
-  return String(text || '').match(/https?:\/\/\S+/g) || [];
-}
-
-function parseResearchLineForComparison_(line) {
-  const text = String(line || '');
-  const priceParts = text.match(/([0-9０-９,，]+)\s*円/g) || [];
-  const prices = priceParts
-    .map((part) => Number(toHalfWidthNumber_(part).replace(/[^\d]/g, '')))
-    .filter((price) => price > 0);
-  const shippingKnown = /送料要確認/.test(text) ? false : prices.length > 1 || /送料無料/.test(text);
-  const price = prices.length
-    ? prices[0] + (shippingKnown && prices.length > 1 ? prices[1] : 0)
-    : 0;
-  return {
-    url: canonicalResearchUrl_((text.match(/https?:\/\/\S+/) || [''])[0]),
-    price,
-    conditionRank: researchConditionRank_(text),
-  };
-}
-
 function researchConditionRank_(text) {
   const value = String(text || '');
   if (/ほぼ新品|未使用に近い/i.test(value)) {
@@ -103,6 +78,26 @@ function normalizeResearchProductUrl_(rawUrl, siteName) {
       NetOff: 'https://www.netoff.co.jp',
     };
     url = `${hosts[siteName] || ''}${url}`;
+  }
+
+  // A matching domain substring in a query/path is not proof of the URL's host.
+  // This list also prevents external sites from being fetched under a trusted label.
+  const allowedHosts = {
+    Amazon: ['www.amazon.co.jp', 'amazon.co.jp'],
+    Yahoo: ['page.auctions.yahoo.co.jp', 'auctions.yahoo.co.jp'],
+    YahooFleamarket: ['paypayfleamarket.yahoo.co.jp'],
+    Mercari: ['jp.mercari.com'],
+    Jimoty: ['jmty.jp', 'www.jmty.jp'],
+    Rakuten: ['item.rakuten.co.jp'],
+    Surugaya: ['www.suruga-ya.jp', 'suruga-ya.jp'],
+    Offmall: ['netmall.hardoff.co.jp'],
+    SecondStreet: ['www.2ndstreet.jp', '2ndstreet.jp'],
+    NetOff: ['www.netoff.co.jp', 'netoff.co.jp'],
+  };
+  const authority = url.match(/^https:\/\/([^/?#]+)(?:[/?#]|$)/i);
+  if (!authority || !allowedHosts[siteName] ||
+      !allowedHosts[siteName].includes(authority[1].toLowerCase())) {
+    return '';
   }
 
   let match;

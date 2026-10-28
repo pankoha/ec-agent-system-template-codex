@@ -576,6 +576,32 @@ assert.equal(
   '',
   'search-page assets must never be treated as product URLs',
 );
+for (const unsafeUrl of [
+  'https://attacker.example/next?to=https://jmty.jp/all/sale/article-abc',
+  'https://attacker.example/?url=https://item.rakuten.co.jp/shop/item',
+  'https://jmty.jp@attacker.example/all/sale/article-abc',
+  'http://jmty.jp/all/sale/article-abc',
+  'https://jmty.jp.attacker.example/all/sale/article-abc',
+]) {
+  assert.equal(sandbox.canonicalResearchUrl_(unsafeUrl), '', `unsafe origin must be rejected: ${unsafeUrl}`);
+}
+assert.equal(
+  sandbox.canonicalResearchUrl_('https://jmty.jp/all/sale/article-abc'),
+  'https://jmty.jp/all/sale/article-abc',
+  'legitimate Jimoty product URL must remain supported',
+);
+{
+  let fetched = 0;
+  const previousFetchApp = sandbox.UrlFetchApp;
+  sandbox.UrlFetchApp = { fetch() { fetched += 1; throw new Error('must not fetch'); } };
+  assert.equal(
+    sandbox.inspectResearchUrlAvailability_('https://attacker.example/?next=https://jmty.jp/all/sale/article-abc').availability,
+    'unknown',
+    'untrusted product URL must be rejected at the network boundary',
+  );
+  assert.equal(fetched, 0, 'an untrusted product URL must not trigger a network request');
+  sandbox.UrlFetchApp = previousFetchApp;
+}
 
 assert.equal(sandbox.priceNear_('発売日 2009年 価格 1,513円'), 1513, 'labeled prices must be parsed');
 assert.equal(sandbox.priceNear_('<div data-price="9555">商品</div>'), 9555, 'structured prices must be parsed');
