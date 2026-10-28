@@ -659,3 +659,18 @@ function setupOnChangeTrigger() {
   ScriptApp.newTrigger('syncResearchManagementOnChange').forSpreadsheet(spreadsheet).onChange().create();
 }
 
+function syncResearchManagementOnChange(event) {
+  const changeType = String(event && event.changeType ? event.changeType : '');
+  if (!changeType || ['REMOVE_ROW', 'INSERT_ROW', 'OTHER'].indexOf(changeType) >= 0) {
+    const spreadsheet = getTargetSpreadsheet_();
+    const orderSheet = getOrCreateSheet_(spreadsheet, AMAZON_ORDER_IMPORTER_CONFIG.orderSheetName);
+    if (typeof enforceProtectedDeletedRows_ === 'function') {
+      enforceProtectedDeletedRows_(spreadsheet, orderSheet, `onChange:${changeType || 'UNKNOWN'} 132\u884C\u76EE\u4EE5\u964D\u4FDD\u8B77`);
+    }
+    if (typeof recordDeletedOrdersSinceLastSnapshot_ === 'function') {
+      recordDeletedOrdersSinceLastSnapshot_(spreadsheet, orderSheet, `onChange:${changeType || 'UNKNOWN'}`);
+    }
+    syncResearchManagementByOrderNumber();
+  }
+}
+
